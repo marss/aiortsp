@@ -180,7 +180,19 @@ class RTSPRequest(HTTPLikeMsg):
     """
 
     type = 'request'
-    CLIENT_REQUESTS = (b'ANNOUNCE', b'OPTIONS', b'GET_PARAMETER', b'SET_PARAMETER')
+    CLIENT_REQUESTS = (
+        b'OPTIONS',
+        b'DESCRIBE',
+        b'ANNOUNCE',
+        b'SETUP',
+        b'PLAY',
+        b'PAUSE',
+        b'TEARDOWN',
+        b'GET_PARAMETER',
+        b'SET_PARAMETER',
+        b'REDIRECT',
+        b'RECORD',
+    )
 
     def __init__(self, buffer_size=2 ** 16):
         super().__init__(buffer_size)
