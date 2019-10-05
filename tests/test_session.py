@@ -13,6 +13,7 @@ from aiortsp.transport import TCPTransport
 
 async def handle_client_auth(client_reader, client_writer):
     parser = RTSPParser()
+    playing = False
 
     while True:
         data = await client_reader.read(10000)
@@ -51,10 +52,22 @@ async def handle_client_auth(client_reader, client_writer):
                 response += 'Transport: RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=E6EC9FEF;mode="PLAY"\r\n'
                 response += 'Session: 2sY7Pd2EPx8JY50-;timeout=60\r\n'
             elif msg.method == 'PLAY':
-                pass
+                playing = True
             response += '\r\n'
             print('RESPONSE', response)
             client_writer.write(response.encode())
+
+            if playing:
+                # Send 2 RTP packets
+                rtp = bytearray.fromhex('2400002080605eaac639ab5e13cd9b86674d0029e29019077f1180b7010101a41e244540'
+                                        '2400001080605eabc639ab5e13cd9b8668ee3c80')
+                client_writer.write(rtp)
+
+                # Send an SR
+                sr = bytearray.fromhex('80c8000677ae8d65e051bc2bea33b0001fa8034c0000000000000000')
+                msg = bytearray([ord('$'), 1, 0, len(sr)])
+                msg.extend(sr)
+                client_writer.write(msg)
 
 
 @pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
@@ -64,4 +77,10 @@ async def test_session():
         async with RTSPConnection('127.0.0.1', 5554, timeout=2) as conn:
             async with TCPTransport(conn) as transport:
                 async with RTSPMediaSession(conn, 'rtsp://cam/media.sdp', transport) as sess:
+                    rtcp = sess.stats.build_rtcp()
+                    assert rtcp is None
                     await sess.play()
+                    await asyncio.sleep(0.2)
+                    rtcp = sess.stats.build_rtcp()
+                    assert rtcp
+                    assert sess.stats.received == 2
