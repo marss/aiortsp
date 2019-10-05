@@ -1,0 +1,7 @@
+coverage
+mock
+python-coveralls
+pylint
+pytest
+pytest-asyncio
+tox
