@@ -1,7 +1,7 @@
 """
 RTSP Media Session setup and control
 """
-
+import asyncio
 import calendar
 import json
 import logging
@@ -61,7 +61,7 @@ class RTSPMediaSession:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_val:
+        if exc_val and exc_type != asyncio.CancelledError:
             self.logger.error('exception during session: %s %s', exc_type, exc_val)
         await self.teardown()
 
