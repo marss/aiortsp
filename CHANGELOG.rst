@@ -11,7 +11,7 @@ This repository follows changelog_.
 
 Added
 -----
-* Add a simplified ``RTPReader`` class for easy RTP gathering
+* Add a simplified ``RTSPReader`` class for easy RTP gathering
 
 
 [1.2.1] - 2019-10-05

@@ -25,11 +25,11 @@ See ``examples`` for how to use the lib internals, butfor quick usage:
 .. code-block:: python3
 
     import asyncio
-    from airtsp.rtsp.reader import RTPReader
+    from airtsp.rtsp.reader import RTSPReader
 
     async def main():
         # Open a reader (which means RTSP connection, then media session)
-        async with RTPReader('rtsp://cam/video.sdp') as reader:
+        async with RTSPReader('rtsp://cam/video.sdp') as reader:
             # Iterate on RTP packets
             async for pkt: RTP in reader.iter_packets():
                 print('PKT', pkt.seq, pkt.pt, len(pkt)
