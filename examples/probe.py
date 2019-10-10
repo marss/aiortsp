@@ -3,9 +3,7 @@ import contextlib
 
 import logging
 
-from aiortsp.transport import RTPTransportClient
-from aiortsp.transport.tcp import TCPTransport
-from aiortsp.transport.udp import UDPTransport
+from aiortsp.transport import RTPTransportClient, transport_for_scheme
 from aiortsp.rtsp.connection import RTSPConnection
 from aiortsp.rtsp.session import RTSPMediaSession
 
@@ -46,14 +44,6 @@ async def main():
     media_url = args.url
     probe = Probe()
 
-    transport_class = {
-        'rtsp': UDPTransport,
-        'rtspt': TCPTransport
-    }.get(p_url.scheme)
-
-    if not transport_class:
-        raise ValueError('invalid URL scheme')
-
     async with RTSPConnection(
             p_url.hostname,
             p_url.port or 554,
@@ -63,12 +53,15 @@ async def main():
     ) as conn:
 
         logger.info('connected!')
-        transport = transport_class(conn, logger=logger)
 
-        # This is where wa actually subscribe to data
-        transport.subscribe(probe)
+        # Detects if UDP or TCP must be used for RTP transport
+        transport_class = transport_for_scheme(p_url.scheme)
 
-        async with transport:
+        async with transport_class(conn, logger=logger, timeout=args.timeout) as transport:
+
+            # This is where wa actually subscribe to data
+            transport.subscribe(probe)
+
             async with RTSPMediaSession(conn, media_url, transport, logger=logger) as sess:
 
                 await sess.play()

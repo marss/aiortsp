@@ -3,9 +3,7 @@ import sys
 
 import pytest
 
-from aiortsp.rtsp.auth import DigestAuth
 from aiortsp.rtsp.connection import RTSPConnection
-from aiortsp.rtsp.errors import RTSPResponseError
 from aiortsp.rtsp.parser import RTSPParser, RTSPRequest
 from aiortsp.rtsp.session import RTSPMediaSession
 from aiortsp.transport import TCPTransport
@@ -17,6 +15,10 @@ async def handle_client_auth(client_reader, client_writer):
 
     while True:
         data = await client_reader.read(10000)
+
+        if not data:
+            break
+
         for msg in parser.parse(data):
             assert isinstance(msg, RTSPRequest)
             print('MSG', msg)

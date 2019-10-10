@@ -20,4 +20,18 @@ One could easily decode using `OpenCV <https://pypi.org/project/opencv-python/>`
 or `PyAV <https://pypi.org/project/av/>`_, or not at all depending on the intended
 use.
 
-See ``examples`` for how to use the lib.
+See ``examples`` for how to use the lib internals, butfor quick usage:
+
+.. code-block:: python3
+
+    import asyncio
+    from airtsp.rtsp.reader import RTPReader
+
+    async def main():
+        # Open a reader (which means RTSP connection, then media session)
+        async with RTPReader('rtsp://cam/video.sdp') as reader:
+            # Iterate on RTP packets
+            async for pkt: RTP in reader.iter_packets():
+                print('PKT', pkt.seq, pkt.pt, len(pkt)
+
+    asyncio.run(main())
