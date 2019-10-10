@@ -37,13 +37,12 @@ CSeq: {msg.cseq + 1}\r
             queue.put_nowait(msg)
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
 @pytest.mark.asyncio
 async def test_client_connection():
     queue = asyncio.Queue()
 
-    async with await asyncio.start_server(functools.partial(handle_client, queue), '127.0.0.1', 5554):
-
+    server = await asyncio.start_server(functools.partial(handle_client, queue), '127.0.0.1', 5554)
+    try:
         async with RTSPConnection('127.0.0.1', 5554, 'foo', 'bar') as conn:
 
             # Send an OPTIONS request
@@ -62,6 +61,8 @@ async def test_client_connection():
             assert req.type == 'response'
             assert req.status == 551
             assert req.cseq == resp.cseq + 1
+    finally:
+        server.close()
 
 
 async def handle_client_auth(client_reader, client_writer):
@@ -93,29 +94,35 @@ WWW-Authenticate: Digest realm="AXIS_ACCC8E000AA9", nonce="0024e47aY398109708de9
 """.format(msg.headers.get('cseq', 0)).encode())
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
 @pytest.mark.asyncio
 async def test_client_auth_no_credentials():
-    async with await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554):
+    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    try:
         async with RTSPConnection('127.0.0.1', 5554) as conn:
             with pytest.raises(RTSPResponseError):
                 await conn.send_request('DESCRIBE', 'rtsp://cam/axis-media/media.amp', timeout=2)
+    finally:
+        server.close()
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
 @pytest.mark.asyncio
 async def test_client_auth_invalid_credentials():
-    async with await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554):
+    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    try:
         async with RTSPConnection('127.0.0.1', 5554, username='toto', password='hello') as conn:
             with pytest.raises(RTSPResponseError):
                 await conn.send_request('DESCRIBE', 'rtsp://cam/axis-media/media.amp', timeout=2)
+    finally:
+        server.close()
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
 @pytest.mark.asyncio
 async def test_client_auth():
-    async with await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554):
+    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    try:
         async with RTSPConnection('127.0.0.1', 5554, username='root', password='admin123') as conn:
             resp = await conn.send_request('DESCRIBE', 'rtsp://cam/axis-media/media.amp', timeout=2)
             assert resp
             assert resp.status == 200
+    finally:
+        server.close()

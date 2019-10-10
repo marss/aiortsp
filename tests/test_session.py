@@ -1,5 +1,4 @@
 import asyncio
-import sys
 
 import pytest
 
@@ -72,10 +71,10 @@ async def handle_client_auth(client_reader, client_writer):
                 client_writer.write(msg)
 
 
-@pytest.mark.skipif(sys.version_info < (3, 7), reason='asyncio.start_server not supported')
 @pytest.mark.asyncio
 async def test_session():
-    async with await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554):
+    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    try:
         async with RTSPConnection('127.0.0.1', 5554, timeout=2) as conn:
             async with TCPTransport(conn) as transport:
                 async with RTSPMediaSession(conn, 'rtsp://cam/media.sdp', transport) as sess:
@@ -86,3 +85,5 @@ async def test_session():
                     rtcp = sess.stats.build_rtcp()
                     assert rtcp
                     assert sess.stats.received == 2
+    finally:
+        server.close()
