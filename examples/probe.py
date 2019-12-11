@@ -67,7 +67,7 @@ async def main():
                 await sess.play()
 
                 try:
-                    while conn.running:
+                    while conn.running and transport.running:
                         await asyncio.sleep(sess.session_keepalive)
                         await sess.keep_alive()
 

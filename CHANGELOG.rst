@@ -6,6 +6,13 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.1] - 2019-12-11
+====================
+
+Fixed
+-----
+* Check transport status in session keep alive loops
+
 [1.3.0] - 2019-10-10
 ====================
 

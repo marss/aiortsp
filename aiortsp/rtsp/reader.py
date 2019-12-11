@@ -103,7 +103,7 @@ class RTSPReader(RTPTransportClient):
 
                     try:
                         last_keep_alive = time()
-                        while conn.running:
+                        while conn.running and transport.running:
                             # Check keep alive
                             now = time()
                             if (now - last_keep_alive) > sess.session_keepalive:
