@@ -230,7 +230,9 @@ class RTSPConnection(asyncio.Protocol):
             self.logger.error('transport is closed')
             return
 
-        headers['CSeq'] = cseq
+        # Always write CSeq first
+        msg += f'{LINE_SPLIT_STR}CSeq: {cseq}'
+
         headers['User-Agent'] = USER_AGENT
 
         if body:
