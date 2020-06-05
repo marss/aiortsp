@@ -6,6 +6,13 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.3] - 2020-06-05
+====================
+
+Fixed
+-----
+* Fix an issue when RTSP response headers are fragmented across multiple TCP reads
+
 [1.3.2] - 2020-02-12
 ====================
 
