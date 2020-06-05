@@ -324,9 +324,11 @@ class RTSPParser:
         :param data:
         :return:
         """
-        data, self._prev_data = self._prev_data + data, b''
         while data:
             if self.pending_msg is None:
+                # Prepend potential leftover from previous data
+                data, self._prev_data = self._prev_data + data, b''
+
                 # We need to determine what is coming next
                 if data.startswith(CRLF):
                     # Skip empty lines between items
