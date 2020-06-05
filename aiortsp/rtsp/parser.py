@@ -49,6 +49,7 @@ class HTTPLikeMsg(RTSPMessage):
     def __init__(self, buffer_size=2**16):
         self.headerlist = []
         self.headers = None
+        self._untreated_data = b''
         self._data = None
         self.size = 0
         self._buf = ''
@@ -71,9 +72,18 @@ class HTTPLikeMsg(RTSPMessage):
         :returns remaining bytes and True if done parsing current packet
         """
         done = False
+
+        # Prepend any leftover from previous message
+        data, self._untreated_data = self._untreated_data + data, b''
+
         while data and not done:
             if not self._data:
                 # Still a header
+                if b'\r\n' not in data:
+                    # We don't have yet a full header: will have next time (hopefully)
+                    self._untreated_data = data
+                    data = b''
+                    break
                 line, data = data.split(b'\r\n', 1)
                 done = self.parse_header(line.decode('utf-8') + '\r\n')
             else:
@@ -306,6 +316,7 @@ class RTSPParser:
 
     def __init__(self):
         self.pending_msg = None
+        self._prev_data = b''
 
     def parse(self, data: bytes) -> Iterator[RTSPMessage]:
         """
@@ -313,6 +324,7 @@ class RTSPParser:
         :param data:
         :return:
         """
+        data, self._prev_data = self._prev_data + data, b''
         while data:
             if self.pending_msg is None:
                 # We need to determine what is coming next
@@ -325,14 +337,21 @@ class RTSPParser:
                     # This is a reply
                     self.pending_msg = RTSPResponse()
 
-                elif data.startswith(RTSPRequest.CLIENT_REQUESTS):
-                    self.pending_msg = RTSPRequest()
-
                 elif data.startswith(b'$'):
                     self.pending_msg = RTSPBinary()
 
-                else:
+                elif data.startswith(RTSPRequest.CLIENT_REQUESTS) or any(
+                        req.startswith(data) for req in RTSPRequest.CLIENT_REQUESTS):
+                    self.pending_msg = RTSPRequest()
+
+                elif len(data) > 13:
+                    # That's the longest client request we could expect...
                     raise ValueError
+
+                else:
+                    # Received only a chunk of message. Should be better next iteration. Store
+                    self._prev_data = data
+                    break
 
             data, done = self.pending_msg.feed(data)
 

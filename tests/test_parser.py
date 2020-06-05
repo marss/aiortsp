@@ -3,7 +3,7 @@ import pytest
 from aiortsp.rtsp.parser import RTSPParser
 
 
-@pytest.mark.parametrize('data, objs', [
+DATA = [
     # Very dumb one
     (b"""RTSP/1.0 200 OK\r\nCSeq: 0\r\n\r\n""", [('response', (200, 0, 0, None))]),
 
@@ -77,6 +77,11 @@ Client requested end point already in use for camera 00000001-0000-babe-0000-acc
         ('binary', (1, b'Hello!!')),
     ]),
 
+    # Binary followed by incomplete Response header
+    (b"""$\000\000\003iiiRTSP/1.0 200 O""", [
+        ('binary', (0, b'iii')),
+    ]),
+
     # Answer and binary
     (b"""RTSP/1.0 200 OK\r\nCSeq: 0\r\n\r
 $\000\000\003iii\r\n$\001\000\007Hello!!RTSP/1.0 404 Not Found\r\nCSeq: 1\r\n\r\n""", [
@@ -100,12 +105,52 @@ Content-Type: text/parameters\r
 """, [
         ('request', ('ANNOUNCE', 'rtsp://foo.com/bar.avi', 10)),
     ]),
-])
+]
+
+
+@pytest.mark.parametrize('data, objs', DATA)
 def test_simple_response(data, objs):
 
     parser = RTSPParser()
 
     resps = list(parser.parse(data))
+
+    assert len(resps) == len(objs)
+
+    for i in range(len(objs)):
+        resp = resps[i]
+        type_ = objs[i][0]
+
+        assert resp.type == type_
+
+        if type_ == 'response':
+            status, cseq, length, content = objs[i][1]
+            assert resp.status == status
+            assert resp.cseq == cseq
+            assert resp.content_length == length
+            if content:
+                assert resp.content == content
+        elif type_ == 'binary':
+            id_, data = objs[i][1]
+            assert resp.id == id_
+            assert resp.length == len(data)
+            assert resp.data == data
+        elif type_ == 'request':
+            method, url, cseq = objs[i][1]
+            assert resp.method == method
+            assert resp.request_url == url
+            assert resp.cseq == cseq
+
+
+@pytest.mark.parametrize('data, objs', DATA)
+def test_chunk_response(data, objs):
+
+    parser = RTSPParser()
+
+    resps = []
+
+    for chunk_idx in range(1 + len(data) // 4):
+        resps.extend(list(parser.parse(data[chunk_idx*4:(chunk_idx+1)*4])))
 
     assert len(resps) == len(objs)
 
