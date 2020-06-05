@@ -193,7 +193,7 @@ class RTSPConnection(asyncio.Protocol):
             www_auth = resp.headers.get('www-authenticate')
 
             if not www_auth:
-                raise RTSPResponseError(f'Invalid 401 response received (no www-authenticate)', resp)
+                raise RTSPResponseError('Invalid 401 response received (no www-authenticate)', resp)
 
             if not isinstance(www_auth, list):
                 www_auth = [www_auth]
