@@ -47,7 +47,7 @@ class RTSPConnection(asyncio.Protocol):
         self.result = asyncio.Future()
         self.pending_msg = None
         self.active_requests = {}
-        self._cseq = 0
+        self._cseq = 1
         self._auth = None
         self.parser = RTSPParser()
         self.binary_handlers = {}
