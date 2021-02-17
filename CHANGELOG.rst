@@ -6,6 +6,19 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.4] - 2021-02-18
+====================
+
+Fixed
+-----
+* Start CSeq to 1 instead of 0 for some peaky servers
+
+Misc
+----
+* Enforce py36 or higher, as it does not work below that point.
+* Fix license specifier which was incorrect
+
+
 [1.3.3] - 2020-06-05
 ====================
 
