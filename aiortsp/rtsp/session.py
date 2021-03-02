@@ -238,7 +238,7 @@ class RTSPMediaSession:
 
     async def keep_alive(self):
         """
-        Send a GET_PARAMETER message in order to keep session alive.
+        Send a GET_PARAMETER or OPTIONS message in order to keep session alive.
         """
         self.logger.debug('sending keep alive')
 
@@ -248,7 +248,8 @@ class RTSPMediaSession:
         elif 'OPTIONS' in self.session_options:
             resp = await self._send('OPTIONS')
         else:
-            raise RTSPError('How to keep session open without either GET_PARAMETER or OPTIONS ???')
+            self.logger.info('Does not support GET_PARAMETER or OPTIONS: not sending keep alive.')
+            resp = None
 
         self.logger.debug('response to keep_alive: %s', resp)
         return resp
