@@ -6,6 +6,14 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.5] - 2021-03-02
+====================
+
+Fixed
+-----
+* Adapt to servers not supporting GET_PARAMETERS and OPTIONS
+
+
 [1.3.4] - 2021-02-18
 ====================
 
