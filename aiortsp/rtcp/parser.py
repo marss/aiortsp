@@ -1,7 +1,7 @@
 """
 RTCP Parsing module
 -------------------
-This should really just be a lib call like we do for RTP (using dpkt),
+This should really just be a lib call like we do for RTP,
 but there is no light/easily importable RTCP parser available...
 """
 from abc import ABC, abstractmethod
