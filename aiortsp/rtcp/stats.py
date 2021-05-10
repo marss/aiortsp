@@ -8,16 +8,14 @@ from math import fabs
 from time import time
 from typing import Optional
 
-from dpkt.rtp import RTP
-
-from .parser import RTCP, SRReport, ts_to_ntp, RR, SDES, BYE, SR
+from ..rtp import RTP
+from .parser import BYE, RR, RTCP, SDES, SR, SRReport, ts_to_ntp
 
 _logger = logging.getLogger('rtcp.sink')
 
 RTP_SEQ_MOD = (1 << 16)
 MAX_MISORDER = 100
 MAX_DROPOUT = 3000
-UINT32_MASK = 0xFFFFFFFF
 UINT32_MASK = 0xFFFFFFFF
 NTP_MASK = 0xFFFF
 

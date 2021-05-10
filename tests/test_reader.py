@@ -1,10 +1,9 @@
 import asyncio
 import logging
-import sys
 
 import pytest
-from dpkt.rtp import RTP
 
+from aiortsp.rtp import RTP
 from aiortsp.rtsp.reader import RTSPReader
 from tests.test_session import handle_client_auth
 

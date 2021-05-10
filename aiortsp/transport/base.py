@@ -8,10 +8,9 @@ import traceback
 from time import time
 from typing import Optional, Set
 
-from dpkt.rtp import RTP
-
 from aiortsp.rtcp.parser import RTCP
 from aiortsp.rtcp.stats import RTCPStats
+from aiortsp.rtp import RTP
 
 _logger = logging.getLogger('rtp.session')
 

@@ -7,11 +7,10 @@ from time import time
 from typing import AsyncIterable, Optional
 from urllib.parse import urlparse
 
-from dpkt.rtp import RTP
-
+from aiortsp.rtp import RTP
 from aiortsp.rtsp.connection import RTSPConnection
 from aiortsp.rtsp.session import RTSPMediaSession
-from aiortsp.transport import transport_for_scheme, RTPTransport, RTPTransportClient
+from aiortsp.transport import RTPTransport, RTPTransportClient, transport_for_scheme
 
 
 class RTSPReader(RTPTransportClient):

@@ -4,7 +4,7 @@ RTSP Stream parsing module
 from abc import abstractmethod
 from binascii import hexlify
 from io import BytesIO
-from typing import Tuple, Iterator
+from typing import Iterator, Tuple
 
 from .errors import RTSPResponseError
 
@@ -260,6 +260,7 @@ class RTSPBinary:
 
     def __init__(self):
         self._buf = b''
+        self._len = None
 
     def feed(self, data):
         """
@@ -275,6 +276,8 @@ class RTSPBinary:
         if len(self._buf) < (self.length + 4):
             return b'', False
 
+        # Done! turn buffer into a memoryview
+        self._buf = memoryview(self._buf)
         data = self._buf[self.length + 4:]
         self._buf = self._buf[:self.length + 4]
         return data, True
@@ -291,8 +294,10 @@ class RTSPBinary:
     @property
     def length(self) -> int:
         """Return frame length"""
-        assert len(self._buf) >= 4, 'buffer too short'
-        return (self._buf[2] << 8) + self._buf[3]
+        if self._len is None:
+            assert len(self._buf) >= 4, "buffer too short"
+            self._len = (self._buf[2] << 8) + self._buf[3]
+        return self._len
 
     @property
     def content(self) -> str:
