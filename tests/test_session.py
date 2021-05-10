@@ -87,3 +87,19 @@ async def test_session():
                     assert sess.stats.received == 2
     finally:
         server.close()
+
+
+@pytest.mark.parametrize('since, until, expected', [
+    (None, None, 'npt=now-'),
+    (0, None, 'clock=19700101T000000Z-'),
+    (1580000000, None, 'clock=20200126T005320Z-'),
+    (1580000000.123, None, 'clock=20200126T005320.123Z-'),
+    (1580000000.12345, None, 'clock=20200126T005320.123Z-'),
+    (1580000000, 1580000040, 'clock=20200126T005320Z-20200126T005400Z'),
+    # TODO: We may want to raise in following cases;
+    #   as a start simply access silly requests.
+    (None, 12345678, 'npt=now-'),  # No start but an end?
+    (1580000040, 1580000000, 'clock=20200126T005400Z-20200126T005320Z'),  # ends before it starts
+])
+def test_session_range(since, until, expected):
+    assert RTSPMediaSession.build_time_range(since, until) == expected

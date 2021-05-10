@@ -8,7 +8,7 @@ import logging
 import math
 import re
 from datetime import datetime
-from typing import Set
+from typing import Set, Optional
 from urllib.parse import urlparse
 
 from aiortsp.rtcp.stats import RTCPStats
@@ -202,27 +202,28 @@ class RTSPMediaSession:
             # @TODO Should we log anything?
             return default_ts
 
-    async def play(self, seek: float = None, until: float = None, speed: int = 1):
+    @classmethod
+    def build_time_range(cls, since: Optional[float], until: Optional[float]) -> str:
+        """
+        Build a time range string.
+        """
+        if since is None:
+            return 'npt=now-'
+
+        start = cls.ts_to_clock(since)
+        end = cls.ts_to_clock(until) if until else ''
+        return f'clock={start}-{end}'
+
+    async def play(self, seek: Optional[float] = None, until: Optional[float] = None, speed: int = 1):
         """
         Send a PLAY request
         :param seek: UTC timestamp where to ask to start. By default, uses 'now'.
         :param until: UTC timestamp where to ask to stop (optional). By default, don't ask to stop.
         :param speed: Replay speed. Could be used for fast forward playing.
         """
-        if seek:
-            start = self.ts_to_clock(seek)
-            range_ = f'clock={start}-'
-            if until:
-                range_ += self.ts_to_clock(until)
-        else:
-            assert until is None, 'cannot specify end time without start time'
-            start = 'now'
-            range_ = 'npt=now-'
+        range_ = self.build_time_range(seek, until)
 
-        self.logger.info(
-            'start playing %s at time `%s` %s and speed `%s`...',
-            self.media_url, start, speed
-        )
+        self.logger.info('start playing %s at range `%s` and speed `%s`...', self.media_url, range_, speed)
 
         resp = await self._send('PLAY', headers={
             'Scale': speed,
