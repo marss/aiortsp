@@ -171,7 +171,7 @@ class RTP:
         """
         if self._new_data:
             return self._new_data
-        return self._data[12 + self.cc * 4 :]
+        return self._data[12 + self.cc * 4:]
 
     @data.setter
     def data(self, value: bytes) -> None:
@@ -198,7 +198,7 @@ class RTP:
 
         :return: bytes for CSRC list
         """
-        return self._data[12 : 12 + self.cc * 4]
+        return self._data[12: 12 + self.cc * 4]
 
     def pack_hdr(self) -> bytes:
         """

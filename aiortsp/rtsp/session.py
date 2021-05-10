@@ -202,21 +202,25 @@ class RTSPMediaSession:
             # @TODO Should we log anything?
             return default_ts
 
-    async def play(self, seek=None, speed=1):
+    async def play(self, seek: float = None, until: float = None, speed: int = 1):
         """
         Send a PLAY request
         :param seek: UTC timestamp where to ask to start. By default, uses 'now'.
+        :param until: UTC timestamp where to ask to stop (optional). By default, don't ask to stop.
         :param speed: Replay speed. Could be used for fast forward playing.
         """
         if seek:
             start = self.ts_to_clock(seek)
             range_ = f'clock={start}-'
+            if until:
+                range_ += self.ts_to_clock(until)
         else:
+            assert until is None, 'cannot specify end time without start time'
             start = 'now'
             range_ = 'npt=now-'
 
         self.logger.info(
-            'start playing %s at time `%s` and speed `%s`...',
+            'start playing %s at time `%s` %s and speed `%s`...',
             self.media_url, start, speed
         )
 
