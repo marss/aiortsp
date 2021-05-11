@@ -1,6 +1,6 @@
 import pytest
 
-from aiortsp.rtsp.auth import DigestAuth, BasicAuth
+from aiortsp.rtsp.auth import DigestClientAuth, BasicClientAuth
 from aiortsp.rtsp.parser import RTSPResponse
 
 
@@ -37,7 +37,7 @@ from aiortsp.rtsp.parser import RTSPResponse
     }),
 ])
 def test_digest(user, passwd, method, url, req, repl):
-    auth = DigestAuth(username=user, password=passwd)
+    auth = DigestClientAuth(username=user, password=passwd)
 
     resp = RTSPResponse()
 
@@ -79,7 +79,7 @@ def test_digest(user, passwd, method, url, req, repl):
     }, 'Basic cm9vdDphZG1pbjEyMw=='),
 ])
 def test_basic(user, passwd, method, url, req, repl):
-    auth = BasicAuth(username=user, password=passwd)
+    auth = BasicClientAuth(username=user, password=passwd)
 
     resp = RTSPResponse()
 

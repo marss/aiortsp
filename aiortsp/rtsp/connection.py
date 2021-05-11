@@ -9,7 +9,7 @@ import traceback
 from typing import Callable
 
 from aiortsp.__version__ import __version__
-from .auth import BasicAuth, DigestAuth
+from .auth import BasicClientAuth, DigestClientAuth
 from .errors import RTSPResponseError, RTSPConnectionError, RTSPTimeoutError
 from .parser import RTSPParser, RTSPRequest, RTSPResponse, RTSPBinary
 
@@ -21,7 +21,119 @@ HEADER_END_STR = LINE_SPLIT_STR * 2
 USER_AGENT = f'aiortsp/{__version__}'
 
 
-class RTSPConnection(asyncio.Protocol):
+class RTSPEndpoint(asyncio.Protocol):
+    """
+    An RTSP Endpoint protocol which can handle either client or server connection.
+    """
+
+    def __init__(self, logger, timeout):
+        self.logger = logger
+        self.default_timeout = timeout
+        self.parser = RTSPParser()
+        self._cseq = 1
+        self._transport = None
+
+    def connection_made(self, transport):
+        """Conforms asyncio.Protocol"""
+        self._transport = transport
+
+    def connection_lost(self, exc):
+        self._transport = None
+
+    @property
+    def running(self) -> bool:
+        """
+        Tells if currently running, ie if we have an open transport.
+        """
+        return self._transport is not None
+
+    def close(self):
+        """
+        Close connection
+        """
+        if self._transport:
+            self._transport.close()
+
+    def _next_seq(self) -> int:
+        cseq = self._cseq
+        self._cseq += 1
+        return cseq
+
+    def identify_us(self, headers: dict):
+        """
+        Client and Server must add some headers identifying who they are.
+
+        :param headers: headers to modify
+        """
+        raise NotImplementedError  # pragma: no cover
+
+    def send_message(self, msg, cseq, headers, body: bytes = None):
+        """
+        Send a 'message' (request or reply) with given cseq and headers
+        """
+        if not self._transport:
+            self.logger.error('transport is closed')
+            return
+
+        # Always write CSeq first
+        msg += f'{LINE_SPLIT_STR}CSeq: {cseq}'
+
+        self.identify_us(headers)
+
+        if body:
+            headers['Content-Length'] = len(body)
+
+        for k, v in headers.items():
+            msg += f'{LINE_SPLIT_STR}{k}: {v}'
+
+        msg += HEADER_END_STR  # End of headers
+
+        data = msg.encode()
+
+        if body:
+            data += body
+
+        self._transport.write(data)
+        self.logger.debug('>>> sending msg:\n%s\n', msg)
+
+    def send_response(self, request: RTSPRequest, code, msg, headers=None, body=None):
+        """
+        Send a response message to given request
+        """
+        if not self._transport:
+            self.logger.error('transport is closed')
+            return
+
+        response = f'RTSP/1.0 {code} {msg}'
+
+        if headers is None:
+            headers = {}
+
+        if 'session' in request.headers:
+            headers['Session'] = request.headers['session']
+
+        self.send_message(response, request.cseq, headers, body)
+
+    def send_binary(self, idx: int, data: bytes):
+        """
+        Send a binary interleaved packet
+        """
+        if not self._transport:
+            self.logger.error('transport is closed')
+            return
+
+        assert 0 <= idx < 256, f'invalid binary index: {idx}'
+
+        m_len = len(data)
+
+        msg = bytearray([ord('$'), idx, (m_len & 0xFF00) >> 8, m_len & 0xFF])
+        msg += data
+
+        self._transport.write(msg)
+        self.logger.debug('>>> sending binary: %s', msg)
+
+
+class RTSPConnection(RTSPEndpoint):
     """
     Creates an RTSP connection for asyncio usage.
 
@@ -31,7 +143,6 @@ class RTSPConnection(asyncio.Protocol):
           # Here you go, do your RTSP stuff
           resp = await conn.send_request('DESCRIBE', url)
     # Cleans properly the connection before leaving the context
-
     """
 
     def __init__(self, host, port, username=None, password=None, accept_auth=None, logger=None, timeout=10):
@@ -40,17 +151,16 @@ class RTSPConnection(asyncio.Protocol):
         self.username = username
         self.password = password
         self.accept_auth = [auth.lower() for auth in accept_auth] if accept_auth else ['basic', 'digest']
-        self.default_timeout = timeout
-        self.logger = logger or _logger
 
-        self._transport = None
         self.result = asyncio.Future()
         self.pending_msg = None
         self.active_requests = {}
-        self._cseq = 1
         self._auth = None
-        self.parser = RTSPParser()
         self.binary_handlers = {}
+        super().__init__(logger=logger or _logger, timeout=timeout)
+
+    def identify_us(self, headers: dict):
+        headers['User-Agent'] = USER_AGENT
 
     async def __aenter__(self):
         await self.prepare()
@@ -73,13 +183,6 @@ class RTSPConnection(asyncio.Protocol):
         except (asyncio.TimeoutError, OSError) as to:
             raise RTSPConnectionError(f'Unable to connect to {self.host}:{self.port}') from to
 
-    def close(self):
-        """
-        Close connection
-        """
-        if self._transport:
-            self._transport.close()
-
     def register_binary_handler(self, callback: Callable) -> int:
         """
         Register a binary callback. Return the ID which will be used for given protocol
@@ -92,14 +195,9 @@ class RTSPConnection(asyncio.Protocol):
 
         return idx
 
-    def connection_made(self, transport):
-        """Conforms asyncio.Protocol"""
-        self._transport = transport
-
     def connection_lost(self, exc):
         """Conforms asyncio.Protocol"""
         self.logger.info('connection to RTSP server %s:%s closed (error: %s)', self.host, self.port, exc)
-        self._transport = None
         if not self.result.done():
             if exc:
                 error = RTSPConnectionError(f'RTSP connection lost: {exc}')
@@ -114,12 +212,7 @@ class RTSPConnection(asyncio.Protocol):
             if not request.done():
                 request.set_exception(error or RTSPConnectionError('connection closed'))
 
-    @property
-    def running(self) -> bool:
-        """
-        Tells if currently running, ie if we have an open transport.
-        """
-        return self._transport is not None
+        super().connection_lost(exc)
 
     def on_binary(self, binary: RTSPBinary):
         """Handler for binary data received"""
@@ -173,11 +266,6 @@ class RTSPConnection(asyncio.Protocol):
                 self._transport.close()
             traceback.print_exc()
 
-    def _next_seq(self):
-        cseq = self._cseq
-        self._cseq += 1
-        return cseq
-
     def handle_401(self, resp: RTSPResponse):
         """
         Handle a 401 (Unauthorized) message.
@@ -202,10 +290,10 @@ class RTSPConnection(asyncio.Protocol):
 
             if any(a.startswith('Basic ') for a in www_auth) and 'basic' in self.accept_auth:
                 self.logger.debug('selecting BASIC authentication')
-                self._auth = BasicAuth(self.username, self.password)
+                self._auth = BasicClientAuth(self.username, self.password)
             elif any(a.startswith('Digest ') for a in www_auth) and 'digest' in self.accept_auth:
                 self.logger.debug('selecting DIGEST authentication')
-                self._auth = DigestAuth(self.username, self.password)
+                self._auth = DigestClientAuth(self.username, self.password)
 
         if self._auth:
             return self._auth.handle_401(resp.headers)
@@ -221,35 +309,6 @@ class RTSPConnection(asyncio.Protocol):
         """
         if self._auth:
             self._auth.handle_ok(resp.headers)
-
-    def send_message(self, msg, cseq, headers, body: bytes = None):
-        """
-        Send a 'message' (request or reply) with given cseq and headers
-        """
-        if not self._transport:
-            self.logger.error('transport is closed')
-            return
-
-        # Always write CSeq first
-        msg += f'{LINE_SPLIT_STR}CSeq: {cseq}'
-
-        headers['User-Agent'] = USER_AGENT
-
-        if body:
-            headers['Content-Length'] = len(body)
-
-        for k, v in headers.items():
-            msg += f'{LINE_SPLIT_STR}{k}: {v}'
-
-        msg += HEADER_END_STR  # End of headers
-
-        data = msg.encode()
-
-        if body:
-            data += body
-
-        self._transport.write(data)
-        self.logger.debug('>>> sending msg:\n%s\n', msg)
 
     async def send_request(self, method, url, headers=None, timeout=None, body: bytes = None) -> RTSPResponse:
         """
@@ -297,39 +356,3 @@ class RTSPConnection(asyncio.Protocol):
         finally:
             # Always cleanup the active request we had registered
             self.active_requests.pop(cseq, None)
-
-    def send_response(self, request: RTSPRequest, code, msg, headers=None):
-        """
-        Send a response message to given request
-        """
-        if not self._transport:
-            self.logger.error('transport is closed')
-            return
-
-        response = f'RTSP/1.0 {code} {msg}'
-
-        if headers is None:
-            headers = {}
-
-        if 'session' in request.headers:
-            headers['Session'] = request.headers['session']
-
-        self.send_message(response, request.cseq, headers)
-
-    def send_binary(self, idx: int, data: bytes):
-        """
-        Send a binary interleaved packet
-        """
-        if not self._transport:
-            self.logger.error('transport is closed')
-            return
-
-        assert 0 <= idx < 256, f'invalid binary index: {idx}'
-
-        m_len = len(data)
-
-        msg = bytearray([ord('$'), idx, (m_len & 0xFF00) >> 8, m_len & 0xFF])
-        msg += data
-
-        self._transport.write(msg)
-        self.logger.debug('>>> sending binary: %s', msg)

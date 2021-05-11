@@ -1,16 +1,13 @@
 """
-RTSP Authentication module.
----------------------------
-
-Implements Basic and Digest authentication.
+Digest authentication support
 """
 
 import hashlib
 
-from base64 import b64encode
 from typing import Callable
 from urllib.request import parse_http_list
 
+from .base import ClientAuth
 
 DIGEST_METHODS = {
     'MD5': hashlib.md5,
@@ -20,52 +17,7 @@ DIGEST_METHODS = {
 }
 
 
-class Auth:
-    """
-    Base class for authentication
-    """
-
-    def __init__(self, max_retry=1):
-        self.max_retry = max_retry
-        self.retry_count = 0
-
-    def handle_ok(self, headers):  # pylint: disable=unused-argument
-        """
-        A response was successful with this authentication. Reset retry count
-        :return:
-        """
-        self.retry_count = 0
-
-    def handle_401(self, headers):  # pylint: disable=unused-argument
-        """
-        :returns True if retry is allowed
-        """
-        self.retry_count += 1
-        return self.retry_count <= self.max_retry
-
-    def make_auth(self, method, url, headers):
-        """
-        Append authorization header
-        """
-        raise NotImplementedError
-
-
-class BasicAuth(Auth):
-    """
-    Implementation of Basic authentication
-    """
-
-    def __init__(self, username, password, max_retry=1):
-        super().__init__(max_retry)
-        self.username = username
-        self.password = password
-
-    def make_auth(self, method, url, headers):
-        b64 = b64encode(f'{self.username}:{self.password}'.encode())
-        headers['Authorization'] = f'Basic {b64.decode()}'
-
-
-class DigestAuth(Auth):
+class DigestClientAuth(ClientAuth):
     """
     Implementation of Digest algorithm
     """
@@ -170,12 +122,5 @@ class DigestAuth(Auth):
         super().handle_ok(headers)
 
     def make_auth(self, method: str, url: str, headers: dict):
-        """
-        Add Authorization to the headers of given request
-        :param method:
-        :param url:
-        :param headers:
-        :return:
-        """
         if self.info:
             headers['Authorization'] = self._build_digest_header(method, url)
