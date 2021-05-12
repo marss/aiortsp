@@ -12,7 +12,7 @@ from aiortsp.rtcp.parser import RTCP
 from aiortsp.rtcp.stats import RTCPStats
 from aiortsp.rtp import RTP
 
-_logger = logging.getLogger('rtp.session')
+_logger = logging.getLogger("rtp.session")
 
 DEFAULT_BUFFER_SIZE = 4 * 1024 * 1024
 
@@ -68,7 +68,7 @@ class RTPTransport:
         An RTCP report was received.
         """
         rtcp = RTCP.unpack(data)
-        self.logger.debug('received RTCP report: %s', rtcp)
+        self.logger.debug("received RTCP report: %s", rtcp)
 
         self.stats.handle_rtcp(rtcp)
 
@@ -80,7 +80,7 @@ class RTPTransport:
             try:
                 client.handle_rtcp(rtcp)
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('error on RTCP client callback: %r', ex)
+                self.logger.error("error on RTCP client callback: %r", ex)
 
     def handle_rtp_data(self, data: bytes):
         """
@@ -94,7 +94,7 @@ class RTPTransport:
             try:
                 client.handle_rtp(rtp)
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('error on RTP client callback: %r', ex)
+                self.logger.error("error on RTP client callback: %r", ex)
 
     @staticmethod
     def parse_transport_fields(header) -> dict:
@@ -102,10 +102,10 @@ class RTPTransport:
         Parse Transport request/response
         """
         res = {}
-        fields_ = header.split(';')
+        fields_ = header.split(";")
         for field in fields_:
-            if '=' in field:
-                k, v = field.split('=', 1)
+            if "=" in field:
+                k, v = field.split("=", 1)
             else:
                 k, v = field, None
 
@@ -121,27 +121,29 @@ class RTPTransport:
         while self.running:
             delay = self.stats.rtcp_interval(initial)
             initial = False
-            self.logger.debug('sleeping for RTCP delay: %s', delay)
+            self.logger.debug("sleeping for RTCP delay: %s", delay)
             await asyncio.sleep(delay)
 
             try:
                 rtcp = self.stats.build_rtcp()
 
                 if not rtcp:
-                    self.logger.warning('no RTCP report available yet (are we receiving anything?)')
+                    self.logger.warning(
+                        "no RTCP report available yet (are we receiving anything?)"
+                    )
                     continue
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('unable to build RTCP report: %r', ex)
+                self.logger.error("unable to build RTCP report: %r", ex)
                 traceback.print_exc()
                 continue
 
             try:
-                self.logger.debug('sending RTCP report: %s', rtcp)
+                self.logger.debug("sending RTCP report: %s", rtcp)
                 await self.send_rtcp_report(rtcp)
             except asyncio.CancelledError:
                 break
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('unable to send RTCP report: %r', ex)
+                self.logger.error("unable to send RTCP report: %r", ex)
 
     async def timeout_loop(self):
         """
@@ -154,8 +156,10 @@ class RTPTransport:
             # Check if (and when) we received anything
             diff = time() - self.stats.last_received
             if not self.paused and diff > self.timeout:
-                self.logger.error('no RTP received for %s seconds: closing', self.timeout)
-                return self.close(TimeoutError('no data'))
+                self.logger.error(
+                    "no RTP received for %s seconds: closing", self.timeout
+                )
+                return self.close(TimeoutError("no data"))
 
             sleep_duration = max(self.timeout - diff, 1)
 
@@ -181,7 +185,7 @@ class RTPTransport:
             try:
                 client.handle_closed(error)
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('error on RTP client callback: %r', ex)
+                self.logger.error("error on RTP client callback: %r", ex)
 
     async def __aenter__(self):
         await self.prepare()
@@ -192,10 +196,10 @@ class RTPTransport:
         self.close(exc_val)
 
     def __enter__(self):
-        raise RuntimeError('did you mean `async with`?')
+        raise RuntimeError("did you mean `async with`?")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        raise RuntimeError('should never be called')
+        raise RuntimeError("should never be called")
 
     def on_transport_request(self, headers: dict):
         """

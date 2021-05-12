@@ -3,20 +3,38 @@ from time import time
 
 import pytest
 
-from aiortsp.rtcp.parser import SR, SDES, RR, RTCP, ts_to_ntp, ntp_to_ts, BYE
+from aiortsp.rtcp.parser import BYE, RR, RTCP, SDES, SR, ntp_to_ts, ts_to_ntp
 
 
-@pytest.mark.parametrize('data, klasses, alt', [
-    ('80c8000677ae8d65e051bc2bea33b0001fa8034c0000000000000000', [SR], None),
-    ('81c8000c5d931534dd3ac1b061d9c00000084f8000000d4c00084f8001932db40000000100000000000000000000000000000000', [SR], None),
-    ('81ca000477ae8d650106756e6b6e6f7700000000', [SDES], None),
-    ('81c9000730f5fb2730f5fb27000000000000726600000c0abc3ffbdb00030e42', [RR], None),
-    ('81c9000730f5fb2730f5fb27000000000000726600000c0abc3ffbdb00030e4281ca000477ae8d650106756e6b6e6f7700000000', [RR, SDES], None),
-    ('81cb0001166ae287', [BYE], None),
-
-    # Padded
-    ('a1ca000577ae8d650106756e6b6e6f770000000000000004', [SDES], '81ca000477ae8d650106756e6b6e6f7700000000'),
-])
+@pytest.mark.parametrize(
+    "data, klasses, alt",
+    [
+        ("80c8000677ae8d65e051bc2bea33b0001fa8034c0000000000000000", [SR], None),
+        (
+            "81c8000c5d931534dd3ac1b061d9c00000084f8000000d4c00084f8001932db40000000100000000000000000000000000000000",
+            [SR],
+            None,
+        ),
+        ("81ca000477ae8d650106756e6b6e6f7700000000", [SDES], None),
+        (
+            "81c9000730f5fb2730f5fb27000000000000726600000c0abc3ffbdb00030e42",
+            [RR],
+            None,
+        ),
+        (
+            "81c9000730f5fb2730f5fb27000000000000726600000c0abc3ffbdb00030e4281ca000477ae8d650106756e6b6e6f7700000000",
+            [RR, SDES],
+            None,
+        ),
+        ("81cb0001166ae287", [BYE], None),
+        # Padded
+        (
+            "a1ca000577ae8d650106756e6b6e6f770000000000000004",
+            [SDES],
+            "81ca000477ae8d650106756e6b6e6f7700000000",
+        ),
+    ],
+)
 def test_rtcp_parse(data, klasses, alt):
     b = bytearray.fromhex(data)
     res = RTCP.unpack(b)

@@ -1,14 +1,15 @@
 """
  Session Description - RFC 4566
  Very basic SDP parser
- ------------------------------------------------------------------------------------------------------
+ ---------------------------------------------------------------------------------------
  type_    Dictionary key          Format of the value
- ======  ======================  ======================================================================
+ ======  ======================  =======================================================
  v       "protocol_version"      version_number
- o       "origin"                ("user", session_id, session_version, "net_type", "addr_type", "addr")
+ o       "origin"                ("user", session_id, session_version, "net_type",
+                                    "addr_type", "addr")
  s       "sessionname"           "session name"
  t & r   "time"                  (starttime, stoptime, [repeat,repeat, ...])
-                                    where repeat = (interval,duration,[offset,offset, ...])
+                                    where repeat = (interval,duration,[offset,offset])
  a       "attribute"             "value of attribute"
  b       "bandwidth"             (mode, bitspersecond)
  i       "information"           "value"
@@ -20,7 +21,7 @@
  k       "encryption"            ("method","value")
  m       "media"                 [media-description, media-description, ... ]
                                      see next table for media description structure
- ======  ======================  ======================================================================
+ ======  ======================  =======================================================
 """
 import re
 from typing import Optional
@@ -38,21 +39,21 @@ class SDP(dict):
         self.current_media = None
 
         self.parsers = {
-            'v': self._parse_version,
-            'o': self._parse_origin,
-            's': self._parse_session_name,
-            'i': self._parse_info,
-            'u': self._parse_uri,
-            'e': self._parse_email,
-            'p': self._parse_phone,
-            'c': self._parse_connection,
-            'k': self._parse_encryption,
-            'z': self._parse_timezone,
-            'm': self._parse_media,
-            'b': self._parse_bandwidth,
-            't': self._parse_time,
-            'r': self._parse_repeats,
-            'a': self._parse_attributes,
+            "v": self._parse_version,
+            "o": self._parse_origin,
+            "s": self._parse_session_name,
+            "i": self._parse_info,
+            "u": self._parse_uri,
+            "e": self._parse_email,
+            "p": self._parse_phone,
+            "c": self._parse_connection,
+            "k": self._parse_encryption,
+            "z": self._parse_timezone,
+            "m": self._parse_media,
+            "b": self._parse_bandwidth,
+            "t": self._parse_time,
+            "r": self._parse_repeats,
+            "a": self._parse_attributes,
         }
 
         for line in data.splitlines():
@@ -61,47 +62,57 @@ class SDP(dict):
     def _parse_version(self, value):
         value = int(value)
         # Only version 0 allowed
-        assert value == 0, 'only SDP version 0 supported'
-        self['version'] = int(value)
+        assert value == 0, "only SDP version 0 supported"
+        self["version"] = int(value)
 
     def _parse_origin(self, value):
-        self['origin'] = value
+        self["origin"] = value
 
     def _parse_session_name(self, value):
-        self['sessionName'] = value
+        self["sessionName"] = value
 
     def _parse_info(self, value):
-        self['information'] = value
+        self["information"] = value
 
     def _parse_uri(self, value):
-        self['URI'] = value
+        self["URI"] = value
 
     def _parse_email(self, value):
-        self['email'] = value
+        self["email"] = value
 
     def _parse_phone(self, value):
-        self['phone'] = value
+        self["phone"] = value
 
     def _parse_connection(self, value):
-        self._element['connection'] = value
+        self._element["connection"] = value
 
     def _parse_encryption(self, value):
-        method, value = re.match(r"^(clear|base64|uri|prompt)(?:[:](.*))?$", value).groups()
+        method, value = re.match(
+            r"^(clear|base64|uri|prompt)(?:[:](.*))?$", value
+        ).groups()
         self._element["encryption"] = (method, value)
 
     def _parse_timezone(self, value):
         adjustments = []
         while value.strip() != "":
-            adjtime, offset, offsetunit, value = re.match(r"^ *(\d+) +([+-]?\d+)([dhms])? *?(.*)$", value).groups()
+            adjtime, offset, offsetunit, value = re.match(
+                r"^ *(\d+) +([+-]?\d+)([dhms])? *?(.*)$", value
+            ).groups()
             adjtime = int(adjtime)
-            offset = int(offset) * {None: 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[offsetunit]
+            offset = (
+                int(offset)
+                * {None: 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[offsetunit]
+            )
             adjustments.append((adjtime, offset))
 
-        self._element['timezoneAdjustments'] = adjustments
+        self._element["timezoneAdjustments"] = adjustments
 
     def _parse_media(self, value):
         media, port, numports, protocol, fmt = re.match(
-            r"^(audio|video|text|application|message) +(\d+)(?:[/](\d+))? +([^ ]+) +(.+)$", value).groups()
+            r"^(audio|video|text|application|message) "
+            r"+(\d+)(?:[/](\d+))? +([^ ]+) +(.+)$",
+            value,
+        ).groups()
 
         port = int(port)
 
@@ -111,24 +122,25 @@ class SDP(dict):
             numports = int(numports)
 
         self.current_media = {
-            'type': media,
-            'port': port,
-            'numPorts': numports,
-            'protocol': protocol,
-            'format': fmt
+            "type": media,
+            "port": port,
+            "numPorts": numports,
+            "protocol": protocol,
+            "format": fmt,
         }
-        self.setdefault('medias', []).append(self.current_media)
+        self.setdefault("medias", []).append(self.current_media)
 
     def _parse_bandwidth(self, value):
-        mode, rate = \
-            re.match(r"^ *((?:AS)|(?:CT)|(?:X-[^:]+)):(\d+) *$", value).groups()
+        mode, rate = re.match(
+            r"^ *((?:AS)|(?:CT)|(?:X-[^:]+)):(\d+) *$", value
+        ).groups()
         bitspersecond = int(rate) * 1000
 
-        self._element['bandwidth'] = (mode, bitspersecond)
+        self._element["bandwidth"] = (mode, bitspersecond)
 
     def _parse_time(self, value):
         start, stop = [int(x) for x in re.match(r"^ *(\d+) +(\d+) *$", value).groups()]
-        self._element['time'] = (start, stop)
+        self._element["time"] = (start, stop)
 
     def _parse_repeats(self, value):
         terms = re.split(r"\s+", value)
@@ -140,47 +152,37 @@ class SDP(dict):
 
         interval, duration = parsedterms[0], parsedterms[1]
         offsets = parsedterms[2:]
-        self._element['repeats'] = (interval, duration, offsets)
+        self._element["repeats"] = (interval, duration, offsets)
 
     def _parse_attributes(self, value):
         # Attributes are a=<attrname>:<specific content>
-        attr, content = value.split(':', 1) if ':' in value else (value, None)
-        attributes = self._element.setdefault('attributes', {})
+        attr, content = value.split(":", 1) if ":" in value else (value, None)
+        attributes = self._element.setdefault("attributes", {})
 
         # # Special cases
-        if attr == 'framerate':
+        if attr == "framerate":
             # Content is a framerate as float
             content = float(content)
-        elif attr == 'framesize':
+        elif attr == "framesize":
             pt, width, height = re.match(r"^ *(\d+) *(\d+)-(\d+) *$", content).groups()
-            content = {
-                'pt': int(pt),
-                'width': int(width),
-                'height': int(height)
-            }
-        elif attr == 'rtpmap':
+            content = {"pt": int(pt), "width": int(width), "height": int(height)}
+        elif attr == "rtpmap":
             pt, enc, clock = re.match(r"^ *(\d+) *(\S+)/(\d+) *$", content).groups()
-            content = {
-                'pt': int(pt),
-                'encoding': enc,
-                'clockRate': int(clock)
-            }
-        elif attr == 'fmtp':
+            content = {"pt": int(pt), "encoding": enc, "clockRate": int(clock)}
+        elif attr == "fmtp":
             pt, opts = content.split(None, 1)
-            content = {
-                'pt': int(pt)
-            }
-            for opt in opts.split(';'):
+            content = {"pt": int(pt)}
+            for opt in opts.split(";"):
                 if not opt.strip():
                     # Empty, probably a wrong semicolon at the end...
                     continue
-                k, v = opt.split('=', 1)
+                k, v = opt.split("=", 1)
                 content[k.strip()] = v.strip()
 
         attributes[attr] = content
 
     def _parse_unknown(self, type_, value):
-        self._element.setdefault('unknowns', []).append((type_, value))
+        self._element.setdefault("unknowns", []).append((type_, value))
 
     @property
     def _element(self):
@@ -209,18 +211,18 @@ class SDP(dict):
         :param ctrl: Control attributes for given media (or global)
         :return: URL
         """
-        if not ctrl or ctrl == '*':
+        if not ctrl or ctrl == "*":
             return base
 
-        if ctrl.startswith('rtsp://'):
+        if ctrl.startswith("rtsp://"):
             return ctrl
 
-        if not ctrl.startswith('/') and not base.endswith('/'):
-            return base + '/' + ctrl
+        if not ctrl.startswith("/") and not base.endswith("/"):
+            return base + "/" + ctrl
 
         return base + ctrl
 
-    def get_media(self, media_type='video', media_idx=0):
+    def get_media(self, media_type="video", media_idx=0):
         """
         Return the Nth media description matching requested type
         :param media_type:
@@ -229,8 +231,8 @@ class SDP(dict):
         """
         current_idx = 0
 
-        for media in self.get('medias', []):
-            if media['type'] != media_type:
+        for media in self.get("medias", []):
+            if media["type"] != media_type:
                 continue
 
             if current_idx < media_idx:
@@ -242,7 +244,7 @@ class SDP(dict):
 
         return None
 
-    def setup_url(self, base_url: str, media_type='video', media_idx=0) -> str:
+    def setup_url(self, base_url: str, media_type="video", media_idx=0) -> str:
         """
         Return the URL to be used for setup.
         :param base_url: (url requested or returned base url)
@@ -251,32 +253,36 @@ class SDP(dict):
         :return: corrected URL
         """
         # Check global control
-        base_url = self.mix_url_control(base_url, self.get('attributes', {}).get('control'))
+        base_url = self.mix_url_control(
+            base_url, self.get("attributes", {}).get("control")
+        )
 
         # Look for media
         media = self.get_media(media_type, media_idx)
         if media:
-            return self.mix_url_control(base_url, media.get('attributes', {}).get('control'))
+            return self.mix_url_control(
+                base_url, media.get("attributes", {}).get("control")
+            )
 
         # Not found in medias
         return base_url
 
-    def media_clock_rate(self, media_type='video', media_idx=0) -> Optional[int]:
+    def media_clock_rate(self, media_type="video", media_idx=0) -> Optional[int]:
         """
         Return clock rate of given media
         """
         media = self.get_media(media_type, media_idx)
         if media:
-            return media.get('attributes', {}).get('rtpmap', {}).get('clockRate')
+            return media.get("attributes", {}).get("rtpmap", {}).get("clockRate")
         return None
 
-    def media_payload_type(self, media_type='video', media_idx=0) -> Optional[int]:
+    def media_payload_type(self, media_type="video", media_idx=0) -> Optional[int]:
         """
         Return clock rate of given media
         """
         media = self.get_media(media_type, media_idx)
         if media:
-            return media.get('attributes', {}).get('rtpmap', {}).get('pt')
+            return media.get("attributes", {}).get("rtpmap", {}).get("pt")
         return None
 
     def guess_h264_props(self, media_idx=0):
@@ -285,7 +291,9 @@ class SDP(dict):
         :param media_idx:
         :return: props string
         """
-        media = self.get_media(media_type='video', media_idx=media_idx)
+        media = self.get_media(media_type="video", media_idx=media_idx)
         if media:
-            return media.get('attributes', {}).get('fmtp', {}).get('sprop-parameter-sets')
+            return (
+                media.get("attributes", {}).get("fmtp", {}).get("sprop-parameter-sets")
+            )
         return None

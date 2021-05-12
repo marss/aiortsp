@@ -8,11 +8,12 @@ import logging
 import math
 import re
 from datetime import datetime
-from typing import Set, Optional
+from typing import Optional, Set
 from urllib.parse import urlparse
 
 from aiortsp.rtcp.stats import RTCPStats
 from aiortsp.transport import RTPTransport
+
 from .errors import RTSPError
 from .parser import RTSPResponse
 from .sdp import SDP
@@ -26,8 +27,10 @@ def sanitize_rtsp_url(url: str) -> str:
     """
     p_url = urlparse(url)
     return p_url._replace(
-        scheme='rtsp',
-        netloc=f'{p_url.hostname}' if p_url.port is None else f'{p_url.hostname}:{p_url.port}'
+        scheme="rtsp",
+        netloc=f"{p_url.hostname}"
+        if p_url.port is None
+        else f"{p_url.hostname}:{p_url.port}",
     ).geturl()
 
 
@@ -37,7 +40,14 @@ class RTSPMediaSession:
     TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, transport: RTPTransport, media_type='video', logger=None):
+    def __init__(
+        self,
+        connection,
+        media_url,
+        transport: RTPTransport,
+        media_type="video",
+        logger=None,
+    ):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
         self.transport = transport
@@ -62,7 +72,7 @@ class RTSPMediaSession:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if exc_val and exc_type != asyncio.CancelledError:
-            self.logger.error('exception during session: %s %s', exc_type, exc_val)
+            self.logger.error("exception during session: %s %s", exc_type, exc_val)
         await self.teardown()
 
     async def setup(self):
@@ -70,31 +80,31 @@ class RTSPMediaSession:
         Perform SETUP
         """
         # Get supported options
-        resp = await self._send('OPTIONS', url=self.media_url)
+        resp = await self._send("OPTIONS", url=self.media_url)
         self.save_options(resp)
 
         # Get SDP
-        resp = await self._send('DESCRIBE', headers={
-            'Accept': 'application/sdp'
-        })
+        resp = await self._send("DESCRIBE", headers={"Accept": "application/sdp"})
 
-        if 'content-base' in resp.headers:
-            self.media_url = resp.headers['content-base']
-            self.logger.info('using base url: %s', self.media_url)
+        if "content-base" in resp.headers:
+            self.media_url = resp.headers["content-base"]
+            self.logger.info("using base url: %s", self.media_url)
 
-        self.logger.debug('received SDP:\n%s', resp.content)
+        self.logger.debug("received SDP:\n%s", resp.content)
         self.sdp = SDP(resp.content)
-        self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
+        self.logger.debug("parsed SDP:\n%s", json.dumps(self.sdp, indent=2))
 
         setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
-        self.logger.info('setting up using URL: %s', setup_url)
+        self.logger.info("setting up using URL: %s", setup_url)
 
         # --- SETUP <url> RTSP/1.0 ---
         headers = {}
         self.transport.on_transport_request(headers)
-        resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
+        resp = await self.connection.send_request(
+            "SETUP", url=setup_url, headers=headers
+        )
         self.transport.on_transport_response(resp.headers)
-        self.logger.info('stream correctly setup: %s', resp)
+        self.logger.info("stream correctly setup: %s", resp)
 
         # Store session ID
         self.save_session(resp)
@@ -112,37 +122,41 @@ class RTSPMediaSession:
         Extract method lists from OPTIONS response
         """
         # Extract session Id
-        if 'public' not in resp.headers:
-            raise RTSPError('error on OPTIONS: `Public` not found')
+        if "public" not in resp.headers:
+            raise RTSPError("error on OPTIONS: `Public` not found")
 
-        self.session_options = {o.strip().upper() for o in resp.headers['public'].split(',')}
-        self.logger.info('session options: %s', self.session_options)
+        self.session_options = {
+            o.strip().upper() for o in resp.headers["public"].split(",")
+        }
+        self.logger.info("session options: %s", self.session_options)
 
     def save_session(self, resp: RTSPResponse):
         """
         Extract session ID and timeout
         """
         # Extract session Id
-        if 'session' not in resp.headers:
-            raise RTSPError('error on SETUP: session not found')
+        if "session" not in resp.headers:
+            raise RTSPError("error on SETUP: session not found")
 
         # Get session id
-        session_params = resp.headers['session'].split(';')
+        session_params = resp.headers["session"].split(";")
         self.session_id = session_params[0].strip()
         timeout = 60
         if len(session_params) > 1:
             for option in session_params[1:]:
                 option = option.strip()
-                if not option.startswith('timeout'):
+                if not option.startswith("timeout"):
                     continue
 
-                _, timeout_ = option.split('=', 1)
+                _, timeout_ = option.split("=", 1)
                 timeout = int(timeout_)
 
         self.session_keepalive = int(timeout * 0.9)
         self.logger.info(
-            'session id: %s, timeout: %s, keep_alive: %s',
-            self.session_id, timeout, self.session_keepalive
+            "session id: %s, timeout: %s, keep_alive: %s",
+            self.session_id,
+            timeout,
+            self.session_keepalive,
         )
 
     async def teardown(self):
@@ -150,19 +164,21 @@ class RTSPMediaSession:
         Perform TEARDOWN
         """
         if self.connection.running:
-            self.logger.info('stopping session/playback...')
-            resp = await self._send('TEARDOWN')
-            self.logger.debug('response to teardown: %s', resp)
+            self.logger.info("stopping session/playback...")
+            resp = await self._send("TEARDOWN")
+            self.logger.debug("response to teardown: %s", resp)
             return resp
 
-        self.logger.info('session closed (no transport)')
+        self.logger.info("session closed (no transport)")
 
     async def _send(self, method, url=None, headers=None):
         if headers is None:
             headers = {}
         if self.session_id:
-            headers['Session'] = self.session_id
-        return await self.connection.send_request(method, url or self.media_url, headers)
+            headers["Session"] = self.session_id
+        return await self.connection.send_request(
+            method, url or self.media_url, headers
+        )
 
     @staticmethod
     def ts_to_clock(seek: float) -> str:
@@ -171,11 +187,11 @@ class RTSPMediaSession:
             20190322T043720.003Z
         :param seek: utc timestamp
         """
-        res = datetime.utcfromtimestamp(seek).strftime('%Y%m%dT%H%M%S')
+        res = datetime.utcfromtimestamp(seek).strftime("%Y%m%dT%H%M%S")
         rem = seek - math.floor(seek)
         if rem:
             res += str(round(rem, 3))[1:]
-        res += 'Z'
+        res += "Z"
         return res
 
     @staticmethod
@@ -184,13 +200,16 @@ class RTSPMediaSession:
         Try to return real play time, or default if not found
         """
         try:
-            res = re.match(r'^ *clock *= *(?P<date>\d{8})T(?P<time>\d{6})(\.(?P<milli>\d+))?Z *-', resp.headers.get('range'))
+            res = re.match(
+                r"^ *clock *= *(?P<date>\d{8})T(?P<time>\d{6})(\.(?P<milli>\d+))?Z *-",
+                resp.headers.get("range"),
+            )
 
             if not res:
                 return default_ts
 
             content = res.groupdict()
-            dt = datetime.strptime(content['date'] + content['time'], '%Y%m%d%H%M%S')
+            dt = datetime.strptime(content["date"] + content["time"], "%Y%m%d%H%M%S")
 
             ts = calendar.timegm(dt.timetuple())
 
@@ -208,53 +227,63 @@ class RTSPMediaSession:
         Build a time range string.
         """
         if since is None:
-            return 'npt=now-'
+            return "npt=now-"
 
         start = cls.ts_to_clock(since)
-        end = cls.ts_to_clock(until) if until else ''
-        return f'clock={start}-{end}'
+        end = cls.ts_to_clock(until) if until else ""
+        return f"clock={start}-{end}"
 
-    async def play(self, seek: Optional[float] = None, until: Optional[float] = None, speed: int = 1):
+    async def play(
+        self,
+        seek: Optional[float] = None,
+        until: Optional[float] = None,
+        speed: int = 1,
+    ):
         """
         Send a PLAY request
         :param seek: UTC timestamp where to ask to start. By default, uses 'now'.
-        :param until: UTC timestamp where to ask to stop (optional). By default, don't ask to stop.
+        :param until: UTC timestamp where to ask to stop (optional).
+                      By default, don't ask to stop.
         :param speed: Replay speed. Could be used for fast forward playing.
         """
         range_ = self.build_time_range(seek, until)
 
-        self.logger.info('start playing %s at range `%s` and speed `%s`...', self.media_url, range_, speed)
+        self.logger.info(
+            "start playing %s at range `%s` and speed `%s`...",
+            self.media_url,
+            range_,
+            speed,
+        )
 
-        resp = await self._send('PLAY', headers={
-            'Scale': speed,
-            'Range': range_
-        })
-        self.logger.debug('response to play: %s', resp)
+        resp = await self._send("PLAY", headers={"Scale": speed, "Range": range_})
+        self.logger.debug("response to play: %s", resp)
         return resp
 
     async def pause(self):
         """
         Send a PAUSE, temporarily stopping RTP flow but keeping session alive.
         """
-        self.logger.debug('sending keep alive')
-        resp = await self._send('PAUSE')
-        self.logger.debug('response to pause: %s', resp)
+        self.logger.debug("sending keep alive")
+        resp = await self._send("PAUSE")
+        self.logger.debug("response to pause: %s", resp)
         return resp
 
     async def keep_alive(self):
         """
         Send a GET_PARAMETER or OPTIONS message in order to keep session alive.
         """
-        self.logger.debug('sending keep alive')
+        self.logger.debug("sending keep alive")
 
         # We must send a supported command
-        if 'GET_PARAMETER' in self.session_options:
-            resp = await self._send('GET_PARAMETER')
-        elif 'OPTIONS' in self.session_options:
-            resp = await self._send('OPTIONS')
+        if "GET_PARAMETER" in self.session_options:
+            resp = await self._send("GET_PARAMETER")
+        elif "OPTIONS" in self.session_options:
+            resp = await self._send("OPTIONS")
         else:
-            self.logger.info('Does not support GET_PARAMETER or OPTIONS: not sending keep alive.')
+            self.logger.info(
+                "Does not support GET_PARAMETER or OPTIONS: not sending keep alive."
+            )
             resp = None
 
-        self.logger.debug('response to keep_alive: %s', resp)
+        self.logger.debug("response to keep_alive: %s", resp)
         return resp

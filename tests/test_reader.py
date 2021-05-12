@@ -11,9 +11,9 @@ from tests.test_session import handle_client_auth
 @pytest.mark.asyncio
 async def test_reader():
     count = 0
-    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    server = await asyncio.start_server(handle_client_auth, "127.0.0.1", 5554)
     try:
-        async with RTSPReader('rtspt://127.0.0.1:5554/media.sdp', timeout=2) as reader:
+        async with RTSPReader("rtspt://127.0.0.1:5554/media.sdp", timeout=2) as reader:
             async for pkt in reader.iter_packets():
                 assert isinstance(pkt, RTP)
                 count += 1
@@ -31,11 +31,13 @@ async def test_reader_reconnect():
     logging.basicConfig()
     count = 0
 
-    server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
+    server = await asyncio.start_server(handle_client_auth, "127.0.0.1", 5554)
     try:
-        async with RTSPReader('rtspt://127.0.0.1:5554/media.sdp', run_loop=True, timeout=2, log_level=10) as reader:
+        async with RTSPReader(
+            "rtspt://127.0.0.1:5554/media.sdp", run_loop=True, timeout=2, log_level=10
+        ) as reader:
             async for pkt in reader.iter_packets():
-                print('PKT', len(pkt))
+                print("PKT", len(pkt))
                 assert isinstance(pkt, RTP)
                 count += 1
 

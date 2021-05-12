@@ -11,9 +11,9 @@ from typing import Optional
 from ..rtp import RTP
 from .parser import BYE, RR, RTCP, SDES, SR, SRReport, ts_to_ntp
 
-_logger = logging.getLogger('rtcp.sink')
+_logger = logging.getLogger("rtcp.sink")
 
-RTP_SEQ_MOD = (1 << 16)
+RTP_SEQ_MOD = 1 << 16
 MAX_MISORDER = 100
 MAX_DROPOUT = 3000
 UINT32_MASK = 0xFFFFFFFF
@@ -31,12 +31,15 @@ class RTCPStats:
 
     This is a simplified version not handling multicast yet.
     """
-    def __init__(self, name='unknown'):
+
+    def __init__(self, name="unknown"):
         self.name = name
-        self.ssrc = random.randint(0, 2**32)
+        self.ssrc = random.randint(0, 2 ** 32)
         self.ntp = self.ntp_base = time()
 
-        self.received = self.expected_prior = self.received_prior = self.transit = self.jitter = 0
+        self.received = (
+            self.expected_prior
+        ) = self.received_prior = self.transit = self.jitter = 0
         self.lost = self.fraction = self.pkt_count = self.oct_count = self.timeout = 0
         self.probation = self.last_received = self.ts = self.ts_base = 0
 
@@ -48,7 +51,7 @@ class RTCPStats:
         """
         Return CNAME for RR reporting
         """
-        return f'{self.ssrc}@{self.name}'.encode()
+        return f"{self.ssrc}@{self.name}".encode()
 
     @property
     def extended_seq(self) -> int:
@@ -153,7 +156,9 @@ class RTCPStats:
         """The current RTP timestamp in ts unit based on current time."""
         ts = self.ts
         if self.ntp != self.ntp_base:
-            ts += (time() - self.ntp) * ((self.ts - self.ts_base) / (self.ntp - self.ntp_base))
+            ts += (time() - self.ntp) * (
+                (self.ts - self.ts_base) / (self.ntp - self.ntp_base)
+            )
         return int(ts) & UINT32_MASK
 
     def update(self, pkt: RTP):
@@ -197,12 +202,20 @@ class RTCPStats:
         rtcp = RTCP()
 
         # Add receiver report
-        rr = RR(self.ssrc, reports=[
-            SRReport(
-                ssrc=self.ssrc, flost=self.fraction, clost=self.lost,
-                hseq=self.extended_seq, jitter=int(self.jitter),
-                lsr=self.lsr, dlsr=self.dlsr)
-        ])
+        rr = RR(
+            self.ssrc,
+            reports=[
+                SRReport(
+                    ssrc=self.ssrc,
+                    flost=self.fraction,
+                    clost=self.lost,
+                    hseq=self.extended_seq,
+                    jitter=int(self.jitter),
+                    lsr=self.lsr,
+                    dlsr=self.dlsr,
+                )
+            ],
+        )
         rtcp.packets.append(rr)
 
         # Add SDES identity

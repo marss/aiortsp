@@ -17,5 +17,5 @@ class BasicClientAuth(ClientAuth):
         self.password = password
 
     def make_auth(self, method, url, headers):
-        b64 = b64encode(f'{self.username}:{self.password}'.encode())
-        headers['Authorization'] = f'Basic {b64.decode()}'
+        b64 = b64encode(f"{self.username}:{self.password}".encode())
+        headers["Authorization"] = f"Basic {b64.decode()}"

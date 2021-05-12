@@ -8,7 +8,7 @@ from typing import Iterator, Tuple
 
 from .errors import RTSPResponseError
 
-CRLF = b'\r\n'
+CRLF = b"\r\n"
 
 
 class RTSPMessage:
@@ -16,7 +16,7 @@ class RTSPMessage:
     Base return class for any parsed object coming from an RTSP connection.
     """
 
-    type = 'unknown'
+    type = "unknown"
 
     @abstractmethod
     def feed(self, data: bytes) -> Tuple[bytes, bool]:
@@ -46,13 +46,13 @@ class HTTPLikeMsg(RTSPMessage):
     Base class for both RTSP request & reply. Only the first line differs.
     """
 
-    def __init__(self, buffer_size=2**16):
+    def __init__(self, buffer_size=2 ** 16):
         self.headerlist = []
         self.headers = None
-        self._untreated_data = b''
+        self._untreated_data = b""
         self._data = None
         self.size = 0
-        self._buf = ''
+        self._buf = ""
         self.buffer_size = buffer_size
         self.cseq = None
         self.content_type = None
@@ -74,18 +74,18 @@ class HTTPLikeMsg(RTSPMessage):
         done = False
 
         # Prepend any leftover from previous message
-        data, self._untreated_data = self._untreated_data + data, b''
+        data, self._untreated_data = self._untreated_data + data, b""
 
         while data and not done:
             if not self._data:
                 # Still a header
-                if b'\r\n' not in data:
+                if b"\r\n" not in data:
                     # We don't have yet a full header: will have next time (hopefully)
                     self._untreated_data = data
-                    data = b''
+                    data = b""
                     break
-                line, data = data.split(b'\r\n', 1)
-                done = self.parse_header(line.decode('utf-8') + '\r\n')
+                line, data = data.split(b"\r\n", 1)
+                done = self.parse_header(line.decode("utf-8") + "\r\n")
             else:
                 data, done = self.parse_body(data)
 
@@ -104,13 +104,13 @@ class HTTPLikeMsg(RTSPMessage):
         if not line:  # blank line -> end of header segment
             return self.finish_header()
 
-        if line[0] in ' \t' and self.headerlist:
+        if line[0] in " \t" and self.headerlist:
             name, value = self.headerlist.pop()
             self.headerlist.append((name, value + line.strip()))
         else:
-            if ':' not in line:
+            if ":" not in line:
                 raise RTSPResponseError("Syntax error in header: No colon.")
-            name, value = line.split(':', 1)
+            name, value = line.split(":", 1)
             self.headerlist.append((name.strip().lower(), value.strip()))
         return False
 
@@ -123,19 +123,19 @@ class HTTPLikeMsg(RTSPMessage):
         """
         # Do we have too much data?
         rem_data = self.content_length - self.size
-        assert rem_data > 0, 'we should not be here if already done'
+        assert rem_data > 0, "we should not be here if already done"
 
         if len(data) > rem_data:
             leftover = data[rem_data:]
             data = data[:rem_data]
         else:
-            leftover = b''
+            leftover = b""
 
         self.size += len(data)
         self._data.write(data)
 
         if self.size > self.buffer_size:
-            raise RTSPResponseError('Size of body exceeds maximum buffer size')
+            raise RTSPResponseError("Size of body exceeds maximum buffer size")
 
         return leftover, self.size == self.content_length
 
@@ -149,9 +149,9 @@ class HTTPLikeMsg(RTSPMessage):
                 self.headers[k].append(v)
             else:
                 self.headers[k] = v
-        self.content_type = self.headers.get('content-type', self.content_type)
-        self.content_length = int(self.headers.get('content-length', '0'))
-        self.cseq = int(self.headers.get('cseq', '-1'))
+        self.content_type = self.headers.get("content-type", self.content_type)
+        self.content_length = int(self.headers.get("content-length", "0"))
+        self.cseq = int(self.headers.get("cseq", "-1"))
 
         has_content = self.content_length > 0
 
@@ -168,7 +168,7 @@ class HTTPLikeMsg(RTSPMessage):
     @property
     def data(self) -> bytes:
         """Extract data from buffer as bytes"""
-        val = b''
+        val = b""
         if self._data:
             pos = self._data.tell()
             self._data.seek(0)
@@ -181,7 +181,7 @@ class HTTPLikeMsg(RTSPMessage):
     @property
     def content(self) -> str:
         """Extract data from buffer as utf-8"""
-        return self.data.decode('utf-8')
+        return self.data.decode("utf-8")
 
 
 class RTSPRequest(HTTPLikeMsg):
@@ -189,19 +189,19 @@ class RTSPRequest(HTTPLikeMsg):
     RTSP Request parser.
     """
 
-    type = 'request'
+    type = "request"
     CLIENT_REQUESTS = (
-        b'OPTIONS',
-        b'DESCRIBE',
-        b'ANNOUNCE',
-        b'SETUP',
-        b'PLAY',
-        b'PAUSE',
-        b'TEARDOWN',
-        b'GET_PARAMETER',
-        b'SET_PARAMETER',
-        b'REDIRECT',
-        b'RECORD',
+        b"OPTIONS",
+        b"DESCRIBE",
+        b"ANNOUNCE",
+        b"SETUP",
+        b"PLAY",
+        b"PAUSE",
+        b"TEARDOWN",
+        b"GET_PARAMETER",
+        b"SET_PARAMETER",
+        b"REDIRECT",
+        b"RECORD",
     )
 
     def __init__(self, buffer_size=2 ** 16):
@@ -213,14 +213,18 @@ class RTSPRequest(HTTPLikeMsg):
     def parse_first_line(self, line):
         self.first_line = line
         self.method, self.request_url, protocol = line.split(None, 2)
-        assert protocol.strip().startswith('RTSP/1.0'), 'RTSP response should start with an RTSP/1.0 protocol marker'
+        assert protocol.strip().startswith(
+            "RTSP/1.0"
+        ), "RTSP response should start with an RTSP/1.0 protocol marker"
 
     def __repr__(self):
-        return f'<Request ' \
-            f'type={self.method} ' \
-            f'url={self.request_url} ' \
-            f'headers={self.headers} ' \
-            f'content-length={self.content_length}>'
+        return (
+            f"<Request "
+            f"type={self.method} "
+            f"url={self.request_url} "
+            f"headers={self.headers} "
+            f"content-length={self.content_length}>"
+        )
 
 
 class RTSPResponse(HTTPLikeMsg):
@@ -228,7 +232,7 @@ class RTSPResponse(HTTPLikeMsg):
     RTSP Response parser.
     """
 
-    type = 'response'
+    type = "response"
 
     def __init__(self, buffer_size=2 ** 16):
         super().__init__(buffer_size)
@@ -237,18 +241,22 @@ class RTSPResponse(HTTPLikeMsg):
         self.status_msg = None
 
     def parse_first_line(self, line):
-        assert line.startswith('RTSP/1.0'), 'RTSP response should start with an RTSP/1.0 protocol marker'
+        assert line.startswith(
+            "RTSP/1.0"
+        ), "RTSP response should start with an RTSP/1.0 protocol marker"
         self.first_line = line
         _, status, status_msg = line.split(None, 2)
         self.status = int(status.strip())
         self.status_msg = status_msg.strip()
 
     def __repr__(self):
-        return f'<Response ' \
-            f'status={self.status} ' \
-            f'msg="{self.status_msg}"" ' \
-            f'headers={self.headers} ' \
-            f'content-length={self.content_length}>'
+        return (
+            f"<Response "
+            f"status={self.status} "
+            f'msg="{self.status_msg}"" '
+            f"headers={self.headers} "
+            f"content-length={self.content_length}>"
+        )
 
 
 class RTSPBinary:
@@ -256,10 +264,10 @@ class RTSPBinary:
     RTSP inline Binary parser.
     """
 
-    type = 'binary'
+    type = "binary"
 
     def __init__(self):
-        self._buf = b''
+        self._buf = b""
         self._len = None
 
     def feed(self, data):
@@ -271,15 +279,15 @@ class RTSPBinary:
 
         # If we did not get enough to read id and length, just return
         if len(self._buf) < 4:
-            return b'', False
+            return b"", False
 
         if len(self._buf) < (self.length + 4):
-            return b'', False
+            return b"", False
 
         # Done! turn buffer into a memoryview
         self._buf = memoryview(self._buf)
-        data = self._buf[self.length + 4:]
-        self._buf = self._buf[:self.length + 4]
+        data = self._buf[self.length + 4 :]
+        self._buf = self._buf[: self.length + 4]
         return data, True
 
     @property
@@ -288,7 +296,7 @@ class RTSPBinary:
         RTSP inline binary data all have a reference ID,
         negociated during SETUP.
         """
-        assert len(self._buf) >= 1, 'buffer too short'
+        assert len(self._buf) >= 1, "buffer too short"
         return self._buf[1]
 
     @property
@@ -302,7 +310,7 @@ class RTSPBinary:
     @property
     def content(self) -> str:
         """Return string representation of content"""
-        return hexlify(self.data).decode('utf-8')
+        return hexlify(self.data).decode("utf-8")
 
     @property
     def data(self) -> bytes:
@@ -310,7 +318,7 @@ class RTSPBinary:
         return self._buf[4:]
 
     def __repr__(self):
-        return f'<Binary id={self.id} length={self.length}>'
+        return f"<Binary id={self.id} length={self.length}>"
 
 
 class RTSPParser:
@@ -321,7 +329,7 @@ class RTSPParser:
 
     def __init__(self):
         self.pending_msg = None
-        self._prev_data = b''
+        self._prev_data = b""
 
     def parse(self, data: bytes) -> Iterator[RTSPMessage]:
         """
@@ -332,7 +340,7 @@ class RTSPParser:
         while data:
             if self.pending_msg is None:
                 # Prepend potential leftover from previous data
-                data, self._prev_data = self._prev_data + data, b''
+                data, self._prev_data = self._prev_data + data, b""
 
                 # We need to determine what is coming next
                 if data.startswith(CRLF):
@@ -340,15 +348,16 @@ class RTSPParser:
                     data = data[2:]
                     continue
 
-                if data.startswith(b'RTSP'):
+                if data.startswith(b"RTSP"):
                     # This is a reply
                     self.pending_msg = RTSPResponse()
 
-                elif data.startswith(b'$'):
+                elif data.startswith(b"$"):
                     self.pending_msg = RTSPBinary()
 
                 elif data.startswith(RTSPRequest.CLIENT_REQUESTS) or any(
-                        req.startswith(data) for req in RTSPRequest.CLIENT_REQUESTS):
+                    req.startswith(data) for req in RTSPRequest.CLIENT_REQUESTS
+                ):
                     self.pending_msg = RTSPRequest()
 
                 elif len(data) > 13:
@@ -356,7 +365,7 @@ class RTSPParser:
                     raise ValueError
 
                 else:
-                    # Received only a chunk of message. Should be better next iteration. Store
+                    # Received only a chunk of message. Should be better next iteration.
                     self._prev_data = data
                     break
 

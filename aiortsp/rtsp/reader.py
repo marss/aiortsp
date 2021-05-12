@@ -26,16 +26,13 @@ class RTSPReader(RTPTransportClient):
                 print(pkt)
     """
 
-    def __init__(
-            self, media_url: str, timeout=10, log_level=20,
-            run_loop=False, **_
-    ):
+    def __init__(self, media_url: str, timeout=10, log_level=20, run_loop=False, **_):
         self.media_url = media_url
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
         self.timeout = timeout
         self.run_loop = run_loop
-        self.queue: 'asyncio.Queue[RTP]' = asyncio.Queue()
+        self.queue: "asyncio.Queue[RTP]" = asyncio.Queue()
         self._runner = None
         self.connection: Optional[RTSPConnection] = None
         self.transport: Optional[RTPTransport] = None
@@ -49,8 +46,15 @@ class RTSPReader(RTPTransportClient):
 
         self.queue.put_nowait(rtp)
 
-    def on_ready(self, connection: RTSPConnection, transport: RTPTransport, session: RTSPMediaSession):
-        """Handler on ready to play stream, for sub classes to do their initialisation"""
+    def on_ready(
+        self,
+        connection: RTSPConnection,
+        transport: RTPTransport,
+        session: RTSPMediaSession,
+    ):
+        """
+        Handler on ready to play stream, for sub classes to do their initialisation
+        """
         if session.sdp:
             self.payload_type = session.sdp.media_payload_type()
         transport.subscribe(self)
@@ -60,7 +64,7 @@ class RTSPReader(RTPTransportClient):
 
     def handle_closed(self, error):
         """Handler for connection closed, for sub classes to cleanup their state"""
-        self.logger.info('connection closed, error: %s', error)
+        self.logger.info("connection closed, error: %s", error)
         self.connection = None
         self.transport = None
         self.session = None
@@ -71,10 +75,10 @@ class RTSPReader(RTPTransportClient):
             try:
                 await self.run_stream()
             except asyncio.CancelledError:
-                self.logger.error('Stopping run loop for %s', self.media_url)
+                self.logger.error("Stopping run loop for %s", self.media_url)
                 break
             except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('Error on stream: %r. Reconnecting...', ex)
+                self.logger.error("Error on stream: %r. Reconnecting...", ex)
                 await asyncio.sleep(1)
 
     async def run_stream(self):
@@ -83,21 +87,28 @@ class RTSPReader(RTPTransportClient):
         """
         p_url = urlparse(self.media_url)
 
-        self.logger.info('try loading stream %s', self.media_url)
+        self.logger.info("try loading stream %s", self.media_url)
         async with RTSPConnection(
-                p_url.hostname, p_url.port or 554,
-                p_url.username, p_url.password,
-                logger=self.logger, timeout=self.timeout
+            p_url.hostname,
+            p_url.port or 554,
+            p_url.username,
+            p_url.password,
+            logger=self.logger,
+            timeout=self.timeout,
         ) as conn:
-            self.logger.info('connected!')
+            self.logger.info("connected!")
 
             transport_class = transport_for_scheme(p_url.scheme)
-            async with transport_class(conn, logger=self.logger, timeout=self.timeout) as transport:
-                async with RTSPMediaSession(conn, self.media_url, transport=transport, logger=self.logger) as sess:
+            async with transport_class(
+                conn, logger=self.logger, timeout=self.timeout
+            ) as transport:
+                async with RTSPMediaSession(
+                    conn, self.media_url, transport=transport, logger=self.logger
+                ) as sess:
 
                     self.on_ready(conn, transport, sess)
 
-                    self.logger.info('playing stream...')
+                    self.logger.info("playing stream...")
                     await sess.play()
 
                     try:
@@ -112,12 +123,13 @@ class RTSPReader(RTPTransportClient):
                             await asyncio.sleep(1)
 
                     except asyncio.CancelledError:
-                        self.logger.info('stopping stream...')
+                        self.logger.info("stopping stream...")
                         raise
 
     async def __aenter__(self):
         self._runner = asyncio.ensure_future(
-            self.run_stream_loop() if self.run_loop else self.run_stream())
+            self.run_stream_loop() if self.run_loop else self.run_stream()
+        )
         self._runner.add_done_callback(lambda *_: self.queue.put_nowait(None))
         return self
 

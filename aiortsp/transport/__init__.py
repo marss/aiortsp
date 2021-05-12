@@ -18,12 +18,9 @@ from .udp import UDPTransport
 
 def transport_for_scheme(scheme: str) -> Type[RTPTransport]:
     """Return transport type based on scheme"""
-    transport_class = {
-        'rtsp': UDPTransport,
-        'rtspt': TCPTransport
-    }.get(scheme)
+    transport_class = {"rtsp": UDPTransport, "rtspt": TCPTransport}.get(scheme)
 
     if not transport_class:
-        raise ValueError(f'invalid URL scheme `{scheme}`')
+        raise ValueError(f"invalid URL scheme `{scheme}`")
 
     return transport_class

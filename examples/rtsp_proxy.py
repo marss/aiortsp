@@ -1,12 +1,11 @@
 import argparse
-import logging
-
 import asyncio
 import contextlib
+import logging
 
 from aiortsp.rtsp.reader import RTSPReader
 from aiortsp.rtsp.sdp import SDP
-from aiortsp.rtsp.server import RTSPServer, RTPStreamer
+from aiortsp.rtsp.server import RTPStreamer, RTSPServer
 
 
 class H264Stream(RTPStreamer):
@@ -22,7 +21,7 @@ class H264Stream(RTPStreamer):
         #            if k != 'pt'
         #        )
         fmtp_data = " "
-        clock_rate = 90000 #self.sdp.media_clock_rate()
+        clock_rate = 90000  # self.sdp.media_clock_rate()
         return f"""v=0
 o=- 0 1 IN IP4 {url.hostname}
 s=Session streamed with aiortsp

@@ -5,18 +5,17 @@ This is indented to remain low level,
 and excludes any media treatment.
 """
 
-from urllib.parse import urlparse
-
 import asyncio
 import logging
 import socket
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 from aiortsp.rtp import RTP
-from aiortsp.rtsp.connection import RTSPEndpoint, USER_AGENT
+from aiortsp.rtsp.connection import USER_AGENT, RTSPEndpoint
 from aiortsp.rtsp.parser import RTSPRequest
 
-_logger = logging.getLogger('rtsp_server')
+_logger = logging.getLogger("rtsp_server")
 
 
 class RTSPClientHandler(RTSPEndpoint):
@@ -30,19 +29,19 @@ class RTSPClientHandler(RTSPEndpoint):
         self.authenticated = False
         self._client = None
         self._supported_requests = {
-            'OPTIONS': self.handle_options,
-            'DESCRIBE': self.handle_describe,
-            'SETUP': self.handle_setup,
+            "OPTIONS": self.handle_options,
+            "DESCRIBE": self.handle_describe,
+            "SETUP": self.handle_setup,
         }
 
     def identify_us(self, headers: dict):
         """Identifying the server"""
-        headers['Server'] = USER_AGENT
+        headers["Server"] = USER_AGENT
 
     def connection_made(self, transport):
         """New client connected"""
-        self._client = transport.get_extra_info('peername')
-        self.logger.info('connection made from %s', self._client)
+        self._client = transport.get_extra_info("peername")
+        self.logger.info("connection made from %s", self._client)
         super().connection_made(transport)
 
     def data_received(self, data):
@@ -51,17 +50,17 @@ class RTSPClientHandler(RTSPEndpoint):
         The argument is a bytes object.
         """
         for msg in self.parser.parse(data):  # type: RTSPRequest
-            if msg.type != 'request':
-                self.logger.warning('dropping unsupported msg: %s', msg)
+            if msg.type != "request":
+                self.logger.warning("dropping unsupported msg: %s", msg)
                 continue
 
             if msg.method not in self._supported_requests:
                 # TODO Answer something nice
-                self.logger.warning('unsupported request type %s: %s', msg.method, msg)
-                self.send_response(msg, 405, 'Method Not Allowed')
+                self.logger.warning("unsupported request type %s: %s", msg.method, msg)
+                self.send_response(msg, 405, "Method Not Allowed")
                 continue
 
-            self.logger.info('got request: %s', msg)
+            self.logger.info("got request: %s", msg)
             self._supported_requests[msg.method](msg)
             # TODO Error handling
 
@@ -72,7 +71,7 @@ class RTSPClientHandler(RTSPEndpoint):
         meaning a regular EOF is received or the connection was
         aborted or closed).
         """
-        self.logger.info('connection lost from %s', self._client)
+        self.logger.info("connection lost from %s", self._client)
 
     def pause_writing(self):
         """
@@ -93,9 +92,12 @@ class RTSPClientHandler(RTSPEndpoint):
                  False otherwise and response is sent.
         """
         if self.server.users and not self.authenticated:
-            self.send_response(request, 401, 'Unauthorized', headers={
-                'WWW-Authenticate': 'Basic realm="aiortsp"'
-            })
+            self.send_response(
+                request,
+                401,
+                "Unauthorized",
+                headers={"WWW-Authenticate": 'Basic realm="aiortsp"'},
+            )
             return False
 
         return True
@@ -104,13 +106,16 @@ class RTSPClientHandler(RTSPEndpoint):
 
     def handle_options(self, req: RTSPRequest):
         """Respond to OPTIONS request"""
-        self.send_response(request=req, code=200, msg='OK', headers={
-            'Public': ', '.join(self._supported_requests.keys())
-        })
+        self.send_response(
+            request=req,
+            code=200,
+            msg="OK",
+            headers={"Public": ", ".join(self._supported_requests.keys())},
+        )
 
     def handle_describe(self, req: RTSPRequest):
         """Respond to DESCRIBE request"""
-        self.logger.info('requesting description for path %s', req.request_url)
+        self.logger.info("requesting description for path %s", req.request_url)
 
         if not self.check_auth(req):
             return
@@ -118,11 +123,15 @@ class RTSPClientHandler(RTSPEndpoint):
         description = self.server.describe(req.request_url)
 
         if description:
-            self.send_response(request=req, code=200, msg='OK', headers={
-                'Content-Type': 'application/sdp'
-            }, body=description.encode())
+            self.send_response(
+                request=req,
+                code=200,
+                msg="OK",
+                headers={"Content-Type": "application/sdp"},
+                body=description.encode(),
+            )
         else:
-            self.send_response(request=req, code=404, msg='NOT FOUND')
+            self.send_response(request=req, code=404, msg="NOT FOUND")
 
     def handle_setup(self, req: RTSPRequest):
         """Respond to SETUP request"""
@@ -154,18 +163,22 @@ class RTSPServer:
     """
 
     def __init__(
-            self,
-            host: str = '0.0.0.0',
-            port: int = 554,
-            users: Optional[Dict[str, str]] = None,
-            accept_auth: List[str] = None,
-            logger: logging.Logger = None,
-            timeout: float = 10
+        self,
+        host: str = "0.0.0.0",
+        port: int = 554,
+        users: Optional[Dict[str, str]] = None,
+        accept_auth: List[str] = None,
+        logger: logging.Logger = None,
+        timeout: float = 10,
     ):
         self.host = host
         self.port = port
         self.users = users
-        self.accept_auth = [auth.lower() for auth in accept_auth] if accept_auth else ['basic', 'digest']
+        self.accept_auth = (
+            [auth.lower() for auth in accept_auth]
+            if accept_auth
+            else ["basic", "digest"]
+        )
         self.default_timeout = timeout
         self.logger = logger or _logger
         self._server = None
@@ -175,12 +188,12 @@ class RTSPServer:
         """
         Start the RTSP Server.
         """
-        self.logger.info('start serving on rtsp://%s:%s/', self.host, self.port)
+        self.logger.info("start serving on rtsp://%s:%s/", self.host, self.port)
         self._server = await asyncio.get_event_loop().create_server(
             lambda: RTSPClientHandler(self),
             host=self.host,
             port=self.port,
-            family=socket.AF_INET
+            family=socket.AF_INET,
         )
 
     async def stop(self):
