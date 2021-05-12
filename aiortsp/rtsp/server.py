@@ -92,7 +92,7 @@ class RTSPClientHandler(RTSPEndpoint):
         :return: True if authentication was successful,
                  False otherwise and response is sent.
         """
-        if self.server.password and not self.authenticated:
+        if self.server.users and not self.authenticated:
             self.send_response(request, 401, 'Unauthorized', headers={
                 'WWW-Authenticate': 'Basic realm="aiortsp"'
             })
