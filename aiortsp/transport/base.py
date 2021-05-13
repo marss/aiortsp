@@ -6,7 +6,7 @@ import asyncio
 import logging
 import traceback
 from time import time
-from typing import Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from aiortsp.rtcp.parser import RTCP
 from aiortsp.rtcp.stats import RTCPStats
@@ -97,19 +97,75 @@ class RTPTransport:
                 self.logger.error("error on RTP client callback: %r", ex)
 
     @staticmethod
-    def parse_transport_fields(header) -> dict:
+    def parse_transport_fields(header: str) -> List[Dict[str, Any]]:
         """
         Parse Transport request/response
-        """
-        res = {}
-        fields_ = header.split(";")
-        for field in fields_:
-            if "=" in field:
-                k, v = field.split("=", 1)
-            else:
-                k, v = field, None
 
-            res[k.strip()] = v.strip() if v is not None else None
+        RFC 2326, section 12.39
+
+        Request can contain multiple transport specifications,
+        while response MUST contain only one. For simplicity,
+        always return a list of transport.
+
+        :param header: transport header content
+        :returns: list of transport specifications, parsed
+        """
+        res = []
+        for transport_str in header.split(","):
+            transport: Dict[str, Any] = {}
+
+            fields = transport_str.split(";")
+            assert len(fields) > 0, "transport must have  specifier and delivery"
+
+            # -- Parse transport specifier --
+            tr, profile, *lower = fields[0].split("/")
+
+            # Expecting RTP/AVP
+            transport["transport"] = tr.strip()
+            assert transport["transport"] == "RTP"
+
+            transport["profile"] = profile.strip()
+            assert transport["profile"] == "AVP"
+
+            assert 0 <= len(lower) <= 1
+            transport["protocol"] = lower[0].strip() if lower else "UDP"
+
+            for field in fields[1:]:
+                if field in {"unicast", "multicast"}:
+                    transport["delivery"] = field
+                elif field == "append":
+                    transport["append"] = True
+                else:
+                    assert "=" in field, f"unexpected field {field}"
+                    f_type, content = (
+                        f.strip() for f in field.split("=")
+                    )  # type: str, Any
+
+                    if f_type == "ttl":
+                        content = int(content)
+                    elif f_type in {
+                        "client_port",
+                        "server_port",
+                        "port",
+                        "interleaved",
+                    }:
+                        if "-" in content:
+                            rtp, rtcp = (int(x) for x in content.split("-", 1))
+                        else:
+                            rtp = int(content)
+                            rtcp = rtp + 1
+
+                        content = {"rtp": rtp, "rtcp": rtcp}
+                    elif f_type == "mode":
+                        content = "PLAY" if "PLAY" in content else "RECORD"
+
+                    transport[f_type] = content
+
+            # Set some default values
+            transport.setdefault("delivery", "multicast")
+            transport.setdefault("mode", "PLAY")
+
+            res.append(transport)
 
         return res
 

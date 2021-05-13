@@ -238,12 +238,14 @@ class UDPTransport(RTPTransport):
             raise RTSPError("error on SETUP: Transport not found")
 
         # Get server port
-        fields = self.parse_transport_fields(headers["transport"])
+        transports = self.parse_transport_fields(headers["transport"])
+        assert len(transports) == 1
+        fields = transports[0]
 
         if "server_port" in fields:
-            self.server_rtp, self.server_rtcp = fields["server_port"].split("-", 1)
-            self.server_rtp = int(self.server_rtp)
-            self.server_rtcp = int(self.server_rtcp)
+            ports = fields["server_port"]
+            self.server_rtp = ports["rtp"]
+            self.server_rtcp = ports["rtcp"]
             self.logger.info(
                 "server RTP/RTCP ports: %s-%s", self.server_rtp, self.server_rtcp
             )
@@ -260,6 +262,7 @@ class UDPTransport(RTPTransport):
     def send_upstream(sink, address, port, count=5, length=200):
         """
         Send dummy packets to RTP source port to force NAT traversal
+
         :param sink: socket where to send dummy traffic
         :param address: server address
         :param port: server port

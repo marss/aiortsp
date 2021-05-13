@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from aiortsp.rtp import RTP
 from aiortsp.rtsp.connection import USER_AGENT, RTSPEndpoint
 from aiortsp.rtsp.parser import RTSPRequest
+from aiortsp.transport.base import RTPTransport
 
 _logger = logging.getLogger("rtsp_server")
 
@@ -120,6 +121,9 @@ class RTSPClientHandler(RTSPEndpoint):
         if not self.check_auth(req):
             return
 
+        # TODO Check for 'Accept' field containing 'application/sdp'.
+        # If not, just assume SDP.
+
         description = self.server.describe(req.request_url)
 
         if description:
@@ -136,10 +140,40 @@ class RTSPClientHandler(RTSPEndpoint):
     def handle_setup(self, req: RTSPRequest):
         """Respond to SETUP request"""
 
+        # Client MAY try to re-setup, but unless we plan to support this,
+        # we must politely decline with a 455 error
+        if "session" in req.headers:
+            self.send_response(
+                request=req, code=455, msg="Method Not Valid in This State"
+            )
+            return
+
+        # Parse Transport header, which contains all we need.
+        if "transport" not in req.headers:
+            self.send_response(request=req, code=400, msg="invalid request")
+            return
+
+        transports = RTPTransport.parse_transport_fields(req.headers["transport"])
+        self.logger.info("transports requested: %s", transports)
+
+        # TODO Send a proper reply; for now just reject
+        self.send_response(request=req, code=400, msg="invalid request")
+
 
 class RTPStreamer:
     """
-    RTP Stream to be served by the server
+    RTP Streamer class
+    ==================
+
+    This is a base class for implementing RTP
+    session handling. It can be used in many ways:
+
+    - Starting to play back local files
+    - Starting a streaming session from an ongoing stream
+    - Streaming on demand
+    - Implementing an RTSP gateway to a non-rtsp VDR?
+    - Proxying
+    - ...
     """
 
     def __init__(self):
@@ -152,7 +186,14 @@ class RTPStreamer:
 
     def to_sdp(self, url) -> str:
         """
-        Build an SDP message for this stream
+        Called upon DESCRIBE request.
+
+        Given the requested URL, implementer must
+        build an SDP object describing the content
+        to be streamed out.
+
+        TODO Should the output be the SDP string,
+        or an SDP object?
         """
         raise NotImplementedError
 

@@ -72,11 +72,16 @@ class TCPTransport(RTPTransport):
         if "transport" not in headers:
             raise RTSPError("error on SETUP: Transport not found")
 
-        fields = self.parse_transport_fields(headers["transport"])
+        transports = self.parse_transport_fields(headers["transport"])
 
-        assert (
-            fields.get("interleaved") == f"{self.rtp_idx}-{self.rtcp_idx}"
-        ), "invalid returned interleaved header"
+        # Response must only return one transport
+        assert len(transports) == 1
+        fields = transports[0]
+
+        assert fields.get("interleaved") == {
+            "rtp": self.rtp_idx,
+            "rtcp": self.rtcp_idx,
+        }, "invalid returned interleaved header"
 
     async def send_rtcp_report(self, rtcp: RTCP):
         self.connection.send_binary(self.rtcp_idx, bytes(rtcp))
