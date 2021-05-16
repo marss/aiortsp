@@ -163,7 +163,6 @@ class RTPTransport:
 
             # Set some default values
             transport.setdefault("delivery", "multicast")
-            transport.setdefault("mode", "PLAY")
 
             res.append(transport)
 
