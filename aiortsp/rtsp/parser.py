@@ -4,7 +4,7 @@ RTSP Stream parsing module
 from abc import abstractmethod
 from binascii import hexlify
 from io import BytesIO
-from typing import Iterator, Tuple
+from typing import Iterator, Optional, Tuple
 
 from .errors import RTSPResponseError
 
@@ -225,6 +225,17 @@ class RTSPRequest(HTTPLikeMsg):
             f"headers={self.headers} "
             f"content-length={self.content_length}>"
         )
+
+    def get_session(self) -> Optional[str]:
+        """
+        Return session ID, if a session is provided
+        """
+        session_id = self.headers.get("session")
+
+        if session_id is not None:
+            session_id = session_id.split(";", 1)[0]
+
+        return session_id
 
 
 class RTSPResponse(HTTPLikeMsg):
