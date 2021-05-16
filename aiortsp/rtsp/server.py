@@ -4,10 +4,14 @@ Implementation of an RTSP Server mechanism
 This is indented to remain low level,
 and excludes any media treatment.
 """
+from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import socket
+import string
+from time import time
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -17,6 +21,76 @@ from aiortsp.rtsp.parser import RTSPRequest
 from aiortsp.transport.base import RTPTransport
 
 _logger = logging.getLogger("rtsp_server")
+
+
+class ServerSession:
+    """
+    Object handling server side session
+    """
+
+    def __init__(self, client: RTSPClientHandler, timeout: float = 60):
+        self.client = client
+        self.timeout = timeout
+        self.session_id = self.generate_session_id()
+        self.last_updated = time()
+
+    def generate_session_id(self) -> str:
+        """
+        Generate a unique session identifier
+        """
+        return "".join(
+            [random.choice(string.ascii_lowercase + string.digits) for _ in range(10)]
+        )
+
+    def send_response(
+        self,
+        request: RTSPRequest,
+        msg: str = "OK",
+        code: int = 200,
+        headers: dict = None,
+    ):
+        self.client.send_response(
+            request=request,
+            msg=msg,
+            code=code,
+            headers={
+                **{"Session": f"{self.session_id};timeout={self.timeout}"},
+                **(headers or {}),
+            },
+        )
+
+    def handle_request(self, req: RTSPRequest):
+        """
+        A request for this session is received
+        """
+        # First of all, just refresh the timer
+        self.ts = time()
+        req_type = req.method
+
+        # Some request types are just for polling / pinging.
+        if req_type == "OPTIONS":
+            self.client.handle_options(req)
+
+        elif req_type == "PLAY":
+            # TODO: do something better than that
+            self.send_response(request=req)
+
+        else:
+            self.send_response(
+                request=req, code=400, msg=f"invalid request on session: {req_type}"
+            )
+
+    async def handle_session(self, request: RTSPRequest, transport: dict):
+        """
+        Handle the life cycle of a streaming session
+        """
+        # 1 - Prepare the streaming output
+        # for now let's just hardcode some fake ports
+        transport["server_port"] = {"rtp": 4567, "rtcp": 4568}
+        self.send_response(
+            request=request,
+            headers={"Transport": RTPTransport.build_transport_string([transport])},
+        )
 
 
 class RTSPClientHandler(RTSPEndpoint):
@@ -33,7 +107,10 @@ class RTSPClientHandler(RTSPEndpoint):
             "OPTIONS": self.handle_options,
             "DESCRIBE": self.handle_describe,
             "SETUP": self.handle_setup,
+            "TEARDOWN": self.handle_teardown,
+            # "GET_PARAMETER": self.handle_get_parameter,
         }
+        self.sessions: Dict[str, ServerSession] = {}
 
     def identify_us(self, headers: dict):
         """Identifying the server"""
@@ -55,15 +132,34 @@ class RTSPClientHandler(RTSPEndpoint):
                 self.logger.warning("dropping unsupported msg: %s", msg)
                 continue
 
-            if msg.method not in self._supported_requests:
-                # TODO Answer something nice
-                self.logger.warning("unsupported request type %s: %s", msg.method, msg)
-                self.send_response(msg, 405, "Method Not Allowed")
-                continue
-
             self.logger.info("got request: %s", msg)
-            self._supported_requests[msg.method](msg)
-            # TODO Error handling
+
+            session_id = msg.get_session()
+
+            if session_id is not None:
+                # A session is provided.
+                # Session means authent.
+                if not self.check_auth(msg):
+                    continue
+
+                # Check if session exists
+                if session_id not in self.sessions:
+                    self.send_response(request=msg, code=400, msg="invalid session")
+                    continue
+
+                session = self.sessions[session_id]
+
+                session.handle_request(msg)
+
+            else:
+                if msg.method not in self._supported_requests:
+                    self.logger.warning(
+                        "unsupported request type %s: %s", msg.method, msg
+                    )
+                    self.send_response(msg, 405, "Method Not Allowed")
+                    continue
+
+                self._supported_requests[msg.method](msg)
 
     def connection_lost(self, exc):
         """Called when the connection is lost or closed.
@@ -107,6 +203,7 @@ class RTSPClientHandler(RTSPEndpoint):
 
     def handle_options(self, req: RTSPRequest):
         """Respond to OPTIONS request"""
+
         self.send_response(
             request=req,
             code=200,
@@ -156,8 +253,51 @@ class RTSPClientHandler(RTSPEndpoint):
         transports = RTPTransport.parse_transport_fields(req.headers["transport"])
         self.logger.info("transports requested: %s", transports)
 
-        # TODO Send a proper reply; for now just reject
-        self.send_response(request=req, code=400, msg="invalid request")
+        while transports:
+            transport = transports[0]
+            transports.remove(transport)
+
+            if transport["protocol"] != "UDP":
+                # TODO Support this case soon
+                continue
+
+            if transport["delivery"] != "unicast":
+                # TODO add support for multicast
+                continue
+
+            # found it!
+            break
+
+        if not transport:
+            # TODO Send a proper reply; for now just reject
+            self.send_response(request=req, code=400, msg="invalid request")
+            return
+
+        # Build transport / session
+        session = ServerSession(self)
+        asyncio.create_task(session.handle_session(req, transport))
+        self.sessions[session.session_id] = session
+
+    def handle_teardown(self, req: RTSPRequest):
+        """
+        Handle a TEARDOWN request.
+
+        This requires an active session, which will be destroyed
+        """
+        session_id = req.get_session()
+
+        if session_id not in self.sessions:
+            self.send_response(request=req, code=400, msg="invalid request")
+            return
+
+        # TODO: perform a real teardown of the session
+        # session = self.sessions[session_id]
+        # session.teardown()
+
+        self.logger.info("removing session %s", session_id)
+        del self.sessions[session_id]
+
+        self.send_response(request=req, code=200, msg="OK")
 
 
 class RTPStreamer:
