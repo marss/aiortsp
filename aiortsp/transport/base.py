@@ -168,6 +168,30 @@ class RTPTransport:
 
         return res
 
+    @staticmethod
+    def build_transport_string(transports: List[Dict[str, Any]]) -> str:
+        """
+        Build a transport header based on requested transport params
+        """
+        results = []
+
+        for t in transports:
+            res = f"{t['transport']}/{t['profile']}/{t['protocol']};{t['delivery']}"
+            for k, v in [
+                (k, v)
+                for k, v in t.items()
+                if k not in {"transport", "profile", "protocol", "delivery"}
+            ]:
+                if isinstance(v, str):
+                    v = f'"{v}"'
+                elif isinstance(v, dict):
+                    v = f"{v['rtp']}-{v['rtcp']}"
+
+                res += f";{k}={v}"
+            results.append(res)
+
+        return ",\n           ".join(results)
+
     async def rtcp_loop(self):
         """
         Handling report sending and timeout
