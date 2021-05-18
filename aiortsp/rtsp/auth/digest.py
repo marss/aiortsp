@@ -16,6 +16,22 @@ DIGEST_METHODS = {
 }
 
 
+def parse_digest_header(header: str) -> dict:
+    """
+    Given a www-authenticate or authorization header,
+    parse returned fields as a dict.
+    """
+    fields = {}
+    fields_ = parse_http_list(header)
+    for field in fields_:
+        k, v = field.split("=", 1)
+        v = v.strip()
+        if v and v[0] == v[-1] == '"':
+            v = v[1:-1]
+        fields[k.strip().lower()] = v
+    return fields
+
+
 class DigestClientAuth(ClientAuth):
     """
     Implementation of Digest algorithm
@@ -27,18 +43,6 @@ class DigestClientAuth(ClientAuth):
         self.password = password
 
         self.info = None
-
-    @staticmethod
-    def _parse_digest_header(header):
-        fields = {}
-        fields_ = parse_http_list(header)
-        for field in fields_:
-            k, v = field.split("=", 1)
-            v = v.strip()
-            if v and v[0] == v[-1] == '"':
-                v = v[1:-1]
-            fields[k.strip().lower()] = v
-        return fields
 
     @staticmethod
     def _digest_function(algorithm: str) -> Callable[[str], str]:
@@ -106,7 +110,7 @@ class DigestClientAuth(ClientAuth):
             # @TODO There may be several Digest propositions (MD5, SHA-256, ...)
 
         assert auth_header, "unable to find a Digest header"
-        self.info = self._parse_digest_header(auth_header[6:])
+        self.info = parse_digest_header(auth_header[6:])
 
         return super().handle_401(headers)
 
@@ -116,7 +120,7 @@ class DigestClientAuth(ClientAuth):
         :return:
         """
         if "authentication-info" in headers:
-            info = self._parse_digest_header(headers["authentication-info"])
+            info = parse_digest_header(headers["authentication-info"])
             if "nextnonce" in info:
                 self.info["nonce"] = info["nextnonce"]
 

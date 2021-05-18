@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from aiortsp.rtp import RTP
+from aiortsp.rtsp.auth.server import ServerAuth
 from aiortsp.rtsp.connection import USER_AGENT, RTSPEndpoint
 from aiortsp.rtsp.parser import RTSPRequest
 from aiortsp.transport.base import RTPTransport
@@ -188,15 +189,8 @@ class RTSPClientHandler(RTSPEndpoint):
         :return: True if authentication was successful,
                  False otherwise and response is sent.
         """
-        if self.server.users and not self.authenticated:
-            self.send_response(
-                request,
-                401,
-                "Unauthorized",
-                headers={"WWW-Authenticate": 'Basic realm="aiortsp"'},
-            )
-            return False
-
+        if self.server.auth_server:
+            return self.server.auth_server.handle_auth(self, request)
         return True
 
     # --- RTSP Request handlers ---
@@ -236,6 +230,9 @@ class RTSPClientHandler(RTSPEndpoint):
 
     def handle_setup(self, req: RTSPRequest):
         """Respond to SETUP request"""
+
+        if not self.check_auth(req):
+            return
 
         # Client MAY try to re-setup, but unless we plan to support this,
         # we must politely decline with a 455 error
@@ -355,11 +352,15 @@ class RTSPServer:
         self.host = host
         self.port = port
         self.users = users
-        self.accept_auth = (
+        accept_auth = (
             [auth.lower() for auth in accept_auth]
             if accept_auth
             else ["basic", "digest"]
         )
+        if users:
+            self.auth_server = ServerAuth(credentials=users, protocols=accept_auth)
+        else:
+            self.auth_server = None
         self.default_timeout = timeout
         self.logger = logger or _logger
         self._server = None

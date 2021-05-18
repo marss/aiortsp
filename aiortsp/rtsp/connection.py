@@ -85,7 +85,10 @@ class RTSPEndpoint(asyncio.Protocol):
             headers["Content-Length"] = len(body)
 
         for k, v in headers.items():
-            msg += f"{LINE_SPLIT_STR}{k}: {v}"
+            if not isinstance(v, list):
+                v = [v]
+            for v_ in v:
+                msg += f"{LINE_SPLIT_STR}{k}: {v_}"
 
         msg += HEADER_END_STR  # End of headers
 

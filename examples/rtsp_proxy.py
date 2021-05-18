@@ -46,7 +46,9 @@ async def main():
     parser.add_argument("url", help="url to forward")
     args = parser.parse_args()
 
-    async with RTSPServer(port=5554) as server:
+    async with RTSPServer(
+        port=5554, users={"Mufasa": "H4kun4m4t4t4"}, accept_auth=["digest"]
+    ) as server:
         # async with RTSPReader(args.url) as reader:
         #        await asyncio.wait_for(reader.ready.wait(), 10)
         stream = H264Stream(None)
