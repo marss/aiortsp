@@ -11,6 +11,7 @@ from typing import Callable
 from aiortsp.__version__ import __version__
 
 from .auth import BasicClientAuth, DigestClientAuth
+from .auth.base import ResponseSender
 from .errors import RTSPConnectionError, RTSPResponseError, RTSPTimeoutError
 from .parser import RTSPBinary, RTSPParser, RTSPRequest, RTSPResponse
 
@@ -22,7 +23,7 @@ HEADER_END_STR = LINE_SPLIT_STR * 2
 USER_AGENT = f"aiortsp/{__version__}"
 
 
-class RTSPEndpoint(asyncio.Protocol):
+class RTSPEndpoint(ResponseSender, asyncio.Protocol):
     """
     An RTSP Endpoint protocol which can handle either client or server connection.
     """
@@ -33,10 +34,12 @@ class RTSPEndpoint(asyncio.Protocol):
         self.parser = RTSPParser()
         self._cseq = 1
         self._transport = None
+        self.peer_name: str = "???"
 
     def connection_made(self, transport):
         """Conforms asyncio.Protocol"""
         self._transport = transport
+        self.peer_name = self._transport.get_extra_info("peername")
 
     def connection_lost(self, exc):
         self._transport = None
@@ -100,7 +103,14 @@ class RTSPEndpoint(asyncio.Protocol):
         self._transport.write(data)
         self.logger.debug(">>> sending msg:\n%s\n", msg)
 
-    def send_response(self, request: RTSPRequest, code, msg, headers=None, body=None):
+    def send_response(
+        self,
+        request: RTSPRequest,
+        code: int = 200,
+        msg: str = "OK",
+        headers: dict = None,
+        body: bytes = None,
+    ):
         """
         Send a response message to given request
         """

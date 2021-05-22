@@ -32,6 +32,15 @@ def parse_digest_header(header: str) -> dict:
     return fields
 
 
+def get_digest_function(algorithm: str) -> Callable[[str], str]:
+    """
+    Select the right digest function
+    """
+    assert algorithm in DIGEST_METHODS, f"algorithm {algorithm} not found"
+    hashlib_digest = DIGEST_METHODS[algorithm]
+    return lambda x: hashlib_digest(x.encode("utf-8")).hexdigest()
+
+
 class DigestClientAuth(ClientAuth):
     """
     Implementation of Digest algorithm
@@ -43,15 +52,6 @@ class DigestClientAuth(ClientAuth):
         self.password = password
 
         self.info = None
-
-    @staticmethod
-    def _digest_function(algorithm: str) -> Callable[[str], str]:
-        """
-        Select the right digest function
-        """
-        assert algorithm in DIGEST_METHODS, f"algorithm {algorithm} not found"
-        hashlib_digest = DIGEST_METHODS[algorithm]
-        return lambda x: hashlib_digest(x.encode("utf-8")).hexdigest()
 
     def _prepare_digest_header(self, method: str, url: str) -> dict:
         """
@@ -65,7 +65,7 @@ class DigestClientAuth(ClientAuth):
         nonce = self.info.get("nonce")
         opaque = self.info.get("opaque")
 
-        hash_digest = self._digest_function(algorithm)
+        hash_digest = get_digest_function(algorithm)
 
         A1 = "%s:%s:%s" % (self.username, realm, self.password)
         A2 = "%s:%s" % (method, url)

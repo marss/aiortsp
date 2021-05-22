@@ -1,6 +1,28 @@
 """
 Base classes for authentication methods
 """
+from abc import ABC, abstractmethod
+
+from aiortsp.rtsp.parser import RTSPRequest
+
+
+class ResponseSender(ABC):
+    """
+    Stub for sending responses to clients
+    """
+
+    @abstractmethod
+    def send_response(
+        self,
+        request: RTSPRequest,
+        code: int = 200,
+        msg: str = "OK",
+        headers: dict = None,
+        body: bytes = None,
+    ):
+        """
+        Send a response to a client
+        """
 
 
 class ClientAuth:

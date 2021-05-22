@@ -24,6 +24,15 @@ from aiortsp.transport.base import RTPTransport
 _logger = logging.getLogger("rtsp_server")
 
 
+def generate_session_id(length: int = 10) -> str:
+    """
+    Generate a unique session identifier
+    """
+    return "".join(
+        [random.choice(string.ascii_lowercase + string.digits) for _ in range(length)]
+    )
+
+
 class ServerSession:
     """
     Object handling server side session
@@ -32,28 +41,25 @@ class ServerSession:
     def __init__(self, client: RTSPClientHandler, timeout: float = 60):
         self.client = client
         self.timeout = timeout
-        self.session_id = self.generate_session_id()
+        self.session_id = generate_session_id()
         self.last_updated = time()
-
-    def generate_session_id(self) -> str:
-        """
-        Generate a unique session identifier
-        """
-        return "".join(
-            [random.choice(string.ascii_lowercase + string.digits) for _ in range(10)]
-        )
 
     def send_response(
         self,
         request: RTSPRequest,
-        msg: str = "OK",
         code: int = 200,
+        msg: str = "OK",
         headers: dict = None,
     ):
+        """
+        Send a response using underlying client.
+
+        Injects session information in the response.
+        """
         self.client.send_response(
             request=request,
-            msg=msg,
             code=code,
+            msg=msg,
             headers={
                 **{"Session": f"{self.session_id};timeout={self.timeout}"},
                 **(headers or {}),
@@ -65,7 +71,7 @@ class ServerSession:
         A request for this session is received
         """
         # First of all, just refresh the timer
-        self.ts = time()
+        self.last_updated = time()
         req_type = req.method
 
         # Some request types are just for polling / pinging.
@@ -102,8 +108,7 @@ class RTSPClientHandler(RTSPEndpoint):
     def __init__(self, server, timeout: float = 10):
         super().__init__(server.logger, timeout)
         self.server = server
-        self.authenticated = False
-        self._client = None
+        self.authenticator = server.get_authenticator()
         self._supported_requests = {
             "OPTIONS": self.handle_options,
             "DESCRIBE": self.handle_describe,
@@ -119,9 +124,8 @@ class RTSPClientHandler(RTSPEndpoint):
 
     def connection_made(self, transport):
         """New client connected"""
-        self._client = transport.get_extra_info("peername")
-        self.logger.info("connection made from %s", self._client)
         super().connection_made(transport)
+        self.logger.info("connection made from %s", self.peer_name)
 
     def data_received(self, data):
         """Called when some data is received.
@@ -169,17 +173,7 @@ class RTSPClientHandler(RTSPEndpoint):
         meaning a regular EOF is received or the connection was
         aborted or closed).
         """
-        self.logger.info("connection lost from %s", self._client)
-
-    def pause_writing(self):
-        """
-        Called when the transport's buffer goes over the high-water mark.
-        """
-
-    def resume_writing(self):
-        """
-        Called when the transport's buffer drains below the low-water mark.
-        """
+        self.logger.info("connection lost from %s", self.peer_name)
 
     def check_auth(self, request: RTSPRequest) -> bool:
         """
@@ -189,9 +183,7 @@ class RTSPClientHandler(RTSPEndpoint):
         :return: True if authentication was successful,
                  False otherwise and response is sent.
         """
-        if self.server.auth_server:
-            return self.server.auth_server.handle_auth(self, request)
-        return True
+        return self.authenticator.handle_auth(self, request)
 
     # --- RTSP Request handlers ---
 
@@ -351,20 +343,22 @@ class RTSPServer:
     ):
         self.host = host
         self.port = port
-        self.users = users
-        accept_auth = (
+        self.users = users or {}
+        self.accept_auth = (
             [auth.lower() for auth in accept_auth]
             if accept_auth
             else ["basic", "digest"]
         )
-        if users:
-            self.auth_server = ServerAuth(credentials=users, protocols=accept_auth)
-        else:
-            self.auth_server = None
         self.default_timeout = timeout
         self.logger = logger or _logger
         self._server = None
         self.streamers: Dict[str, RTPStreamer] = {}
+
+    def get_authenticator(self) -> ServerAuth:
+        """
+        Create an authenticator instance for a client
+        """
+        return ServerAuth(credentials=self.users, protocols=self.accept_auth)
 
     async def start(self):
         """

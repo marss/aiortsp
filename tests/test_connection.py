@@ -3,7 +3,7 @@ import functools
 
 import pytest
 
-from aiortsp.rtsp.auth import DigestClientAuth
+from aiortsp.rtsp.auth.digest import parse_digest_header
 from aiortsp.rtsp.connection import RTSPConnection
 from aiortsp.rtsp.errors import RTSPResponseError
 from aiortsp.rtsp.parser import RTSPParser
@@ -75,7 +75,7 @@ async def handle_client_auth(client_reader, client_writer):
             authorized = False
             if "authorization" in msg.headers:
                 # Check it!
-                params = DigestClientAuth._parse_digest_header(
+                params = parse_digest_header(
                     msg.headers["authorization"].split(" ", 1)[-1]
                 )
                 print("PARAMS", params)
