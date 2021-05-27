@@ -13,7 +13,9 @@ async def test_reader():
     count = 0
     server = await asyncio.start_server(handle_client_auth, "127.0.0.1", 5554)
     try:
-        async with RTSPReader("rtspt://127.0.0.1:5554/media.sdp", timeout=2) as reader:
+        async with RTSPReader(
+            "rtspt://127.0.0.1:5554/media.sdp", timeout=2, log_level=10
+        ) as reader:
             async for pkt in reader.iter_packets():
                 assert isinstance(pkt, RTP)
                 count += 1

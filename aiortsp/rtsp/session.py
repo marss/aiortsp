@@ -91,8 +91,12 @@ class RTSPMediaSession:
             self.logger.info("using base url: %s", self.media_url)
 
         self.logger.debug("received SDP:\n%s", resp.content)
-        self.sdp = SDP(resp.content)
-        self.logger.debug("parsed SDP:\n%s", json.dumps(self.sdp, indent=2))
+        try:
+            self.sdp = SDP(resp.content)
+        except Exception as ex:
+            self.logger.error("Unable to parse SDP: %r", ex)
+            raise
+        self.logger.debug("parsed SDP:\n%s", json.dumps(self.sdp.content, indent=2))
 
         setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
         self.logger.info("setting up using URL: %s", setup_url)
