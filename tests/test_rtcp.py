@@ -1,9 +1,9 @@
 from binascii import hexlify
-from time import time
 
 import pytest
 
 from aiortsp.rtcp.parser import SR, SDES, RR, RTCP, ts_to_ntp, ntp_to_ts, BYE
+from aiortsp.rtcp.stats import RTCPStats
 
 
 @pytest.mark.parametrize('data, klasses, alt', [
@@ -38,3 +38,48 @@ def test_ntp_to_time():
     t = 1554467594.1005
     n1, n2 = ts_to_ntp(t)
     assert t == ntp_to_ts(n1, n2)
+
+
+def test_rtcp_stats():
+    s = RTCPStats()
+    # Mark first frame
+    s.init_seq(65042)
+    s.update_seq(65042)
+
+    s.update_lost_expected()
+    assert s.lost == 0
+    assert s.maxseq == 65042
+    assert s.extended_seq == 65042
+
+    for i in range(10):
+        s.update_seq(65043 + i)
+
+    s.update_lost_expected()
+    assert s.lost == 0
+    assert s.maxseq == 65052
+    assert s.extended_seq == 65052
+
+    # Hole!
+    s.update_seq(65060)
+
+    s.update_lost_expected()
+    assert s.lost == 7
+    assert s.maxseq == 65060
+    assert s.extended_seq == 65060
+
+    # recover
+    for i in range(7):
+        s.update_seq(65053 + i)
+
+    s.update_lost_expected()
+    assert s.lost == 0
+    assert s.maxseq == 65060
+    assert s.extended_seq == 65060
+
+    # Wrap!
+    s.update_seq(2)
+
+    s.update_lost_expected()
+    assert s.lost == 2**16 - 65060 + 1
+    assert s.maxseq == 2
+    assert s.extended_seq == 2**16 + 2

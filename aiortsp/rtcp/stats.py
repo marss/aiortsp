@@ -80,7 +80,7 @@ class RTCPStats:
         """
         Update the source properties based on received RTP packet's seq.
         """
-        seq_delta = seq - self.maxseq
+        seq_delta = (seq - self.maxseq) % 65536
         if self.probation > 0:
             if seq == self.maxseq + 1:
                 self.probation = self.probation - 1
@@ -96,12 +96,12 @@ class RTCPStats:
                 self.maxseq = seq
             return
 
-        if seq_delta < MAX_DROPOUT:
+        elif seq_delta < MAX_DROPOUT:
             # in order, within reasonable gap
             if seq < self.maxseq:
                 self.cycles += RTP_SEQ_MOD
             self.maxseq = seq
-        elif seq_delta <= RTP_SEQ_MOD - MAX_MISORDER:
+        elif seq_delta <= (RTP_SEQ_MOD - MAX_MISORDER):
             # Huge gap
             if seq == self.bad_seq:
                 # Sequence was either reset or changed
@@ -109,6 +109,8 @@ class RTCPStats:
             else:
                 self.bad_seq = (seq + 1) & (RTP_SEQ_MOD - 1)
                 return
+        # else:
+            # duplicate or reordered packet
 
         # Count this packet
         self.received += 1
