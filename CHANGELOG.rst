@@ -6,6 +6,15 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.6] - 2021-06-30
+====================
+
+Fixed
+-----
+* fix an issue with RTCP statistics not properly detecting reordering
+* fix a issue with RTCP possibly overflowing where there are too many lost packets
+
+
 [1.3.5] - 2021-03-02
 ====================
 
