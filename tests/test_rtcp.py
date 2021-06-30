@@ -2,7 +2,7 @@ from binascii import hexlify
 
 import pytest
 
-from aiortsp.rtcp.parser import SR, SDES, RR, RTCP, ts_to_ntp, ntp_to_ts, BYE
+from aiortsp.rtcp.parser import SR, SDES, RR, RTCP, ts_to_ntp, ntp_to_ts, BYE, SRReport
 from aiortsp.rtcp.stats import RTCPStats
 
 
@@ -83,3 +83,13 @@ def test_rtcp_stats():
     assert s.lost == 2**16 - 65060 + 1
     assert s.maxseq == 2
     assert s.extended_seq == 2**16 + 2
+
+
+def test_sr_report():
+
+    sr = SRReport(
+        ssrc=42, flost=0, clost=int(2**64),
+        hseq=int(2**64), jitter=0,
+        lsr=0, dlsr=0)
+
+    assert len(bytes(sr)) > 0

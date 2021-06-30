@@ -103,7 +103,7 @@ class SRReport:
             '!IIIIII',
             self.ssrc,
             (self.flost << 24) | (self.clost & 0x00FFFFFF),
-            self.hseq,
+            self.hseq & 0xFFFFFFFF,
             self.jitter,
             self.lsr,
             self.dlsr
