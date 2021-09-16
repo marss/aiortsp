@@ -8,96 +8,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import socket
-import string
-from time import time
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-from aiortsp.rtp import RTP
 from aiortsp.rtsp.auth.server import ServerAuth
 from aiortsp.rtsp.connection import USER_AGENT, RTSPEndpoint
 from aiortsp.rtsp.parser import RTSPRequest
 from aiortsp.transport.base import RTPTransport
 
+from .session import MediaSession
+from .streamer import RTPStreamer, StreamNotFound
+
 _logger = logging.getLogger("rtsp_server")
-
-
-def generate_session_id(length: int = 10) -> str:
-    """
-    Generate a unique session identifier
-    """
-    return "".join(
-        [random.choice(string.ascii_lowercase + string.digits) for _ in range(length)]
-    )
-
-
-class ServerSession:
-    """
-    Object handling server side session
-    """
-
-    def __init__(self, client: RTSPClientHandler, timeout: float = 60):
-        self.client = client
-        self.timeout = timeout
-        self.session_id = generate_session_id()
-        self.last_updated = time()
-
-    def send_response(
-        self,
-        request: RTSPRequest,
-        code: int = 200,
-        msg: str = "OK",
-        headers: dict = None,
-    ):
-        """
-        Send a response using underlying client.
-
-        Injects session information in the response.
-        """
-        self.client.send_response(
-            request=request,
-            code=code,
-            msg=msg,
-            headers={
-                **{"Session": f"{self.session_id};timeout={self.timeout}"},
-                **(headers or {}),
-            },
-        )
-
-    def handle_request(self, req: RTSPRequest):
-        """
-        A request for this session is received
-        """
-        # First of all, just refresh the timer
-        self.last_updated = time()
-        req_type = req.method
-
-        # Some request types are just for polling / pinging.
-        if req_type == "OPTIONS":
-            self.client.handle_options(req)
-
-        elif req_type == "PLAY":
-            # TODO: do something better than that
-            self.send_response(request=req)
-
-        else:
-            self.send_response(
-                request=req, code=400, msg=f"invalid request on session: {req_type}"
-            )
-
-    async def handle_session(self, request: RTSPRequest, transport: dict):
-        """
-        Handle the life cycle of a streaming session
-        """
-        # 1 - Prepare the streaming output
-        # for now let's just hardcode some fake ports
-        transport["server_port"] = {"rtp": 4567, "rtcp": 4568}
-        self.send_response(
-            request=request,
-            headers={"Transport": RTPTransport.build_transport_string([transport])},
-        )
 
 
 class RTSPClientHandler(RTSPEndpoint):
@@ -116,7 +39,7 @@ class RTSPClientHandler(RTSPEndpoint):
             "TEARDOWN": self.handle_teardown,
             # "GET_PARAMETER": self.handle_get_parameter,
         }
-        self.sessions: Dict[str, ServerSession] = {}
+        self.sessions: Dict[str, MediaSession] = {}
 
     def identify_us(self, headers: dict):
         """Identifying the server"""
@@ -207,18 +130,19 @@ class RTSPClientHandler(RTSPEndpoint):
         # TODO Check for 'Accept' field containing 'application/sdp'.
         # If not, just assume SDP.
 
-        description = self.server.describe(req.request_url)
+        try:
+            content_type, description = self.server.streamer.describe(req.request_url)
 
-        if description:
             self.send_response(
                 request=req,
                 code=200,
                 msg="OK",
-                headers={"Content-Type": "application/sdp"},
+                headers={"Content-Type": content_type},
                 body=description.encode(),
             )
-        else:
-            self.send_response(request=req, code=404, msg="NOT FOUND")
+
+        except StreamNotFound:
+            self.send_response(request=req, code=404, msg="Stream not found")
 
     def handle_setup(self, req: RTSPRequest):
         """Respond to SETUP request"""
@@ -263,7 +187,7 @@ class RTSPClientHandler(RTSPEndpoint):
             return
 
         # Build transport / session
-        session = ServerSession(self)
+        session = MediaSession(self)
         asyncio.create_task(session.handle_session(req, transport))
         self.sessions[session.session_id] = session
 
@@ -289,44 +213,6 @@ class RTSPClientHandler(RTSPEndpoint):
         self.send_response(request=req, code=200, msg="OK")
 
 
-class RTPStreamer:
-    """
-    RTP Streamer class
-    ==================
-
-    This is a base class for implementing RTP
-    session handling. It can be used in many ways:
-
-    - Starting to play back local files
-    - Starting a streaming session from an ongoing stream
-    - Streaming on demand
-    - Implementing an RTSP gateway to a non-rtsp VDR?
-    - Proxying
-    - ...
-    """
-
-    def __init__(self):
-        self.clients = set()
-
-    def inject(self, pkt: RTP):
-        """
-        Inject an RTP packet
-        """
-
-    def to_sdp(self, url) -> str:
-        """
-        Called upon DESCRIBE request.
-
-        Given the requested URL, implementer must
-        build an SDP object describing the content
-        to be streamed out.
-
-        TODO Should the output be the SDP string,
-        or an SDP object?
-        """
-        raise NotImplementedError
-
-
 class RTSPServer:
     """
     Create an RTSP Server providing streams to be served to clients
@@ -334,6 +220,7 @@ class RTSPServer:
 
     def __init__(
         self,
+        streamer: RTPStreamer,
         host: str = "0.0.0.0",
         port: int = 554,
         users: Optional[Dict[str, str]] = None,
@@ -352,7 +239,7 @@ class RTSPServer:
         self.default_timeout = timeout
         self.logger = logger or _logger
         self._server = None
-        self.streamers: Dict[str, RTPStreamer] = {}
+        self.streamer = streamer
 
     def get_authenticator(self) -> ServerAuth:
         """
@@ -378,37 +265,13 @@ class RTSPServer:
             self._server.close()
             await self._server.wait_closed()
 
+    async def run(self):
+        async with self:
+            await self._server.wait_closed()
+
     async def __aenter__(self):
         await self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.stop()
-
-    def register_streamer(self, path: str, streamer: RTPStreamer):
-        """
-        Register a streamer object at given URL path.
-
-        The streamer object is the responder for everything related to a stream.
-        """
-        self.streamers[path] = streamer
-
-    def unregister_streamer(self, path: str):
-        """
-        Unregister a streamer.
-
-        Not sure this will ever be used, but worth having for completeness.
-
-        :param path: Path the streamer was registered to
-        """
-        del self.streamers[path]
-
-    def describe(self, url) -> Optional[str]:
-        """
-        Return SDP description of a registered stream, if found.
-        """
-        p_url = urlparse(url)
-        if p_url.path in self.streamers:
-            return self.streamers[p_url.path].to_sdp(p_url)
-
-        return None
