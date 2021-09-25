@@ -11,7 +11,9 @@ import string
 from time import time
 from typing import TYPE_CHECKING
 
+from aiortsp.rtp import RTP
 from aiortsp.rtsp.parser import RTSPRequest
+from aiortsp.rtsp.server.transport.base import ServerTransport
 from aiortsp.transport.base import RTPTransport
 
 if TYPE_CHECKING:
@@ -32,11 +34,24 @@ class MediaSession:
     Object handling server side session
     """
 
-    def __init__(self, client: RTSPClientHandler, timeout: float = 60):
+    def __init__(
+        self, client: RTSPClientHandler, transport: ServerTransport, timeout: float = 60
+    ):
+        self.transport = transport
         self.client = client
         self.timeout = timeout
         self.session_id = generate_session_id()
         self.last_updated = time()
+        self.stream_id = None
+
+    @property
+    def streamer(self):
+        return self.client.server.streamer
+
+    def close(self):
+        self.transport.close()
+        clients = self.streamer.clients[self.stream_id]
+        clients.remove(self.handle_rtp)
 
     def send_response(
         self,
@@ -74,7 +89,7 @@ class MediaSession:
 
         elif req_type == "PLAY":
             # TODO: do something better than that
-            self.client.server.streamer.play(self.session_id)
+            self.streamer.play(self.session_id)
             self.send_response(request=req)
 
         else:
@@ -82,42 +97,21 @@ class MediaSession:
                 request=req, code=400, msg=f"invalid request on session: {req_type}"
             )
 
-    async def handle_session(self, request: RTSPRequest, transport: dict):
+    def handle_session(self, request: RTSPRequest, transport: dict):
         """
         Handle the life cycle of a streaming session
         """
-        # 1 - Prepare the streaming output
-        # for now let's just hardcode some fake ports
-        # TRANSPORT {'transport': 'RTP', 'profile': 'AVP', 'protocol': 'TCP', 'delivery': 'unicast', 'interleaved': {'rtp': 0, 'rtcp': 1}}
-
-        assert transport["transport"] == "RTP"
-        assert transport["profile"] == "AVP"
-
-        if transport["protocol"] == "TCP":
-            assert "interleaved" in transport
-            self.mode = "TCP"
-            self.ports = transport["interleaved"]
-        else:
-            self.mode = "UDP"
-            self.ports = transport["client_port"]
-            # self.udp_ports = await asyncio.create_datagram_endpoint(
-
-        transport["server_port"] = {"rtp": 4567, "rtcp": 4568}
         self.send_response(
             request=request,
             headers={"Transport": RTPTransport.build_transport_string([transport])},
         )
 
-        stream_id = self.client.server.streamer.setup_stream(
+        self.stream_id = self.streamer.setup_stream(
             self.session_id, request.request_url
         )
 
-        clients = self.client.server.streamer.clients.setdefault(stream_id, [])
-        clients.append((self.handle_rtp, self.handle_rtcp))
+        clients = self.streamer.clients.setdefault(self.stream_id, [])
+        clients.append(self.handle_rtp)
 
-    def handle_rtp(self, pkt):
-        print("RTP", pkt)
-        self.client.send_binary(0, bytes(pkt))
-
-    def handle_rtcp(self, pkt):
-        print("RTCP")
+    def handle_rtp(self, rtp: RTP):
+        self.transport.send_rtp(rtp)

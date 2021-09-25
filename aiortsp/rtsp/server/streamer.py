@@ -43,15 +43,7 @@ class RTPStreamer(ABC):
         Send an RTP packet for provided stream id.
         """
         clients = self.clients.get(stream_id, [])
-        for cb, _ in clients:
-            cb(pkt)
-
-    def send_rtcp(self, stream_id: str, pkt: RTCP):
-        """
-        Send an RTCP packet for provided stream id.
-        """
-        clients = self.clients.get(stream_id, [])
-        for _, cb in clients:
+        for cb in clients:
             cb(pkt)
 
     @abstractmethod

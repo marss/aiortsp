@@ -32,8 +32,7 @@ class ProxyStreamer(RTPTransportClient, RTPStreamer):
             self.send_rtp("proxied", rtp)
 
     def handle_rtcp(self, rtcp):
-        if self.playing:
-            self.send_rtcp("proxied", rtcp)
+        """TODO: do something with this?"""
 
     def build_sdp(self, requested_url: str) -> str:
         assert self.sdp

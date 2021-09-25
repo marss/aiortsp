@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 from aiortsp.rtsp.auth.server import ServerAuth
 from aiortsp.rtsp.connection import USER_AGENT, RTSPEndpoint
 from aiortsp.rtsp.parser import RTSPRequest
+from aiortsp.rtsp.server.transport.tcp import TCPServerTransport
+from aiortsp.rtsp.server.transport.udp import UDPServerTransport
 from aiortsp.transport.base import RTPTransport
 
 from .session import MediaSession
@@ -40,6 +42,7 @@ class RTSPClientHandler(RTSPEndpoint):
             # "GET_PARAMETER": self.handle_get_parameter,
         }
         self.sessions: Dict[str, MediaSession] = {}
+        self.binary_indexes = set()
 
     def identify_us(self, headers: dict):
         """Identifying the server"""
@@ -97,6 +100,10 @@ class RTSPClientHandler(RTSPEndpoint):
         aborted or closed).
         """
         self.logger.info("connection lost from %s", self.peer_name)
+
+        for session_id, session in self.sessions.items():
+            self.logger.info("closing session %s", session_id)
+            session.close()
 
     def check_auth(self, request: RTSPRequest) -> bool:
         """
@@ -166,29 +173,51 @@ class RTSPClientHandler(RTSPEndpoint):
         transports = RTPTransport.parse_transport_fields(req.headers["transport"])
         self.logger.info("transports requested: %s", transports)
 
+        # Try to find a matching transport.
+        server_transport = None
         while transports:
-            transport = transports[0]
-            transports.remove(transport)
+            transport = transports.pop(0)
 
-            if transport["protocol"] != "UDP":
+            trans_type = tuple(
+                transport.get(k)
+                for k in ["transport", "profile", "protocol", "delivery"]
+            )
+
+            if trans_type == ("RTP", "AVP", "UDP", "multicast"):
                 # TODO Support this case soon
+                self.logger.info("requesting multicast transport")
+                # self.server.streamer.get_multicast_addr(req.request_url)
                 continue
 
-            if transport["delivery"] != "unicast":
-                # TODO add support for multicast
-                continue
+            if trans_type == ("RTP", "AVP", "UDP", "unicast"):
+                self.logger.info("requesting UDP unicast")
+                ports = transport["client_port"]
+                server_transport = UDPServerTransport(
+                    self, self.peer_name[0], ports["rtp"], ports["rtcp"]
+                )
+                transport["server_port"] = {
+                    "rtp": server_transport.rtp_port,
+                    "rtcp": server_transport.rtcp_port,
+                }
+                break
 
-            # found it!
-            break
+            if trans_type == ("RTP", "AVP", "TCP", "unicast"):
+                self.logger.info("requesting TCP streaming")
+                assert "interleaved" in transport
+                ports = transport["interleaved"]
+                server_transport = TCPServerTransport(self, ports["rtp"], ports["rtcp"])
+                break
 
-        if not transport:
+            self.logger.info("skipping unsupported transport %s", trans_type)
+
+        if not server_transport:
             # TODO Send a proper reply; for now just reject
             self.send_response(request=req, code=400, msg="invalid request")
             return
 
         # Build transport / session
-        session = MediaSession(self)
-        asyncio.create_task(session.handle_session(req, transport))
+        session = MediaSession(self, server_transport)
+        session.handle_session(req, transport)
         self.sessions[session.session_id] = session
 
     def handle_teardown(self, req: RTSPRequest):
