@@ -42,9 +42,9 @@ class ProxyStreamer(RTPTransportClient, RTPStreamer):
         pt = self.sdp.media_payload_type()
         media = self.sdp.get_media(media_type="video")
         fmtp_data = ";".join(
-            "{}={}".format(k, v)
-            for k, v in media.get("attributes", {}).get("fmtp", {}).items()
-            if k != "pt"
+            fmtp["config"]
+            for fmtp in media.get("fmtp", [])
+            if fmtp["payload"] == pt
         )
         clock_rate = self.sdp.media_clock_rate()
         return f"""v=0
