@@ -146,12 +146,15 @@ async def main():
     parser.add_argument(
         "-l", "--logging", type=int, default=20, help="Log level (default: 20)"
     )
+    parser.add_argument(
+        "-P", "--path", default="/video", help="Media path (default: /video)"
+    )
     parser.add_argument("url", help="url to forward")
     args = parser.parse_args()
 
     logging.basicConfig(level=args.logging)
 
-    async with ProxyStreamer(args.url) as streamer:
+    async with ProxyStreamer(url=args.url, path=args.path) as streamer:
         server = RTSPServer(streamer, port=args.port, users=USERS)
         await server.run()
 
