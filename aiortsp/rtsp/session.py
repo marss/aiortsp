@@ -11,7 +11,7 @@ import logging
 import math
 import re
 from datetime import datetime
-from typing import List, Literal, Set
+from typing import Optional, List, Literal, Set, Union
 from urllib.parse import urlparse
 
 from aiortsp.rtcp.stats import RTCPStats
@@ -34,15 +34,30 @@ def sanitize_rtsp_url(url: str) -> str:
     ).geturl()
 
 
+MediaType = Literal["video", "audio", "text", "application", "message"]
+
+
 class RTSPMediaSession:
     """
     RTSP Media Session
     TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, media_stream_configurations: List[MediaStreamConfiguration], logger=None):
+    def __init__(
+            self,
+            connection,
+            media_url,
+            transport: Optional[RTPTransport] = None,
+            media_type: MediaType = "video",
+            logger=None,
+            media_stream_configurations: Optional[List[MediaStreamConfiguration]] = None
+        ):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
+        if media_stream_configurations is None:
+            if transport is None:
+                raise ValueError("transport or media_stream_configurations is required")
+            media_stream_configurations = [MediaStreamConfiguration(transport, media_type)]
         self.media_stream_configurations = media_stream_configurations
         self.logger = logger or default_logger
 
@@ -89,7 +104,11 @@ class RTSPMediaSession:
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
         for media_stream_conf in self.media_stream_configurations:
-            setup_url = self.sdp.setup_url(self.media_url, media_type=media_stream_conf.media_type)
+            setup_url = self.sdp.setup_url(
+                self.media_url,
+                media_type=media_stream_conf.media_type,
+                media_idx=media_stream_conf.media_idx
+            )
             self.logger.info('setting up using URL: %s', setup_url)
 
             # --- SETUP <url> RTSP/1.0 ---
@@ -107,8 +126,10 @@ class RTSPMediaSession:
             await media_stream_conf.transport.warmup()
 
     @property
-    def stats(self) -> List[RTCPStats]:
+    def stats(self) -> Union[RTCPStats, List[RTCPStats]]:
         """Stats convenient accessor"""
+        if len(self.media_stream_configurations) == 1:
+            return self.media_stream_configurations[0].transport.stats
         return list(map(lambda msc: msc.transport.stats, self.media_stream_configurations))
 
     def save_options(self, resp: RTSPResponse):
@@ -264,5 +285,5 @@ class MediaStreamConfiguration:
     """Stores settings for a single media stream in a RTSP media session."""
 
     transport: RTPTransport
-    media_type: Literal["video", "audio", "text", "application", "message"]
+    media_type: MediaType
     media_idx: int = 0
