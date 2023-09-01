@@ -6,6 +6,14 @@ This repository follows changelog_.
 
 **Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
 
+[1.3.7] - 2023-09-01
+====================
+
+Fixed
+-----
+* fix RTSPReader to prevent sending URL credentials into the logs
+
+
 [1.3.6] - 2021-06-30
 ====================
 
