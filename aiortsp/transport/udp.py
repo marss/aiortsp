@@ -210,12 +210,12 @@ class UDPTransport(RTPTransport):
             self.rtcp_sender = sender
         self.handle_rtcp_data(data)
 
-    def on_transport_request(self, headers: dict):
+    def on_transport_request(self, headers: dict, stream_idx=0):
         rtp_port = self.rtp_sink.local_port
         rtcp_port = self.rtcp_sink.local_port
         headers['Transport'] = f'RTP/AVP;unicast;client_port={rtp_port}-{rtcp_port}'
 
-    def on_transport_response(self, headers: dict):
+    def on_transport_response(self, headers: dict, stream_idx=0):
         if 'transport' not in headers:
             raise RTSPError('error on SETUP: Transport not found')
 
@@ -265,6 +265,6 @@ class UDPTransport(RTPTransport):
             self.logger.info('sending warmup RTCP uplink traffic')
             self.send_upstream(self.rtcp_sink, self.connection.host, self.server_rtcp)
 
-    async def send_rtcp_report(self, rtcp: RTCP):
+    async def send_rtcp_report(self, rtcp: RTCP, stream_idx):
         if self.rtcp_sender:
             self.rtcp_sink.sendto(bytes(rtcp), self.rtcp_sender)

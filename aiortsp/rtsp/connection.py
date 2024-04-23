@@ -51,6 +51,7 @@ class RTSPConnection(asyncio.Protocol):
         self._auth = None
         self.parser = RTSPParser()
         self.binary_handlers = {}
+        self._next_interleave_idx = 0
 
     async def __aenter__(self):
         await self.prepare()
@@ -84,7 +85,9 @@ class RTSPConnection(asyncio.Protocol):
         """
         Register a binary callback. Return the ID which will be used for given protocol
         """
-        idx = next(i for i in range(257) if i not in self.binary_handlers)
+        self.logger.info(f'interleave channel {self._next_interleave_idx}')
+        idx = next(i for i in range(self._next_interleave_idx, 257) if i not in self.binary_handlers)
+        self._next_interleave_idx += 1
 
         assert idx < 256, 'not any binary handle left'
 
@@ -123,11 +126,14 @@ class RTSPConnection(asyncio.Protocol):
 
     def on_binary(self, binary: RTSPBinary):
         """Handler for binary data received"""
+        self.logger.debug(f'connection on binary: {binary.id}')
+
         if binary.id in self.binary_handlers:
             # Call handler
             self.binary_handlers[binary.id](binary)
         else:
             self.logger.debug('BINARY data (%s bytes): %s', binary.length, binary.content)
+            #self.binary_handlers[0](binary)
 
     def on_response(self, response: RTSPResponse):
         """Handler for response received"""
@@ -147,7 +153,7 @@ class RTSPConnection(asyncio.Protocol):
             # self.logger.debug('<<< receiving data: %s', data)
 
             for msg in self.parser.parse(data):
-                # self.logger.debug('message done: %s', msg)
+                self.logger.debug('message done: %s', msg)
                 if msg.type == 'response':
                     self.on_response(msg)
 

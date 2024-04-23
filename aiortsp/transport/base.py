@@ -198,14 +198,14 @@ class RTPTransport:
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise RuntimeError('should never be called')
 
-    def on_transport_request(self, headers: dict):
+    def on_transport_request(self, headers: dict, stream_idx=0):
         """
         Given a setup request headers dict,
         add whatever headers are necessary, usually the 'Transport' header.
         """
         raise NotImplementedError
 
-    def on_transport_response(self, headers: dict):
+    def on_transport_response(self, headers: dict, stream_idx=0):
         """
         Given a setup response headers dict,
         Allow the transport to read whatever is necessary.
@@ -241,7 +241,7 @@ class RTPTransport:
         """
         raise NotImplementedError
 
-    async def send_rtcp_report(self, rtcp: RTCP):
+    async def send_rtcp_report(self, rtcp: RTCP, stream_idx=0):
         """
         Send an RTCP report back to the server
         """
