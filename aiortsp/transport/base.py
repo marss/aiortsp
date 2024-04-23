@@ -40,7 +40,7 @@ class RTPTransport:
     Base (abstract) RTP Transport class
     """
 
-    def __init__(self, connection, *, logger=None, timeout=10):
+    def __init__(self, connection, *, logger=None, timeout=10, num_streams=1):
         self.connection = connection
         self.clients: Set[RTPTransportClient] = set()
         self.stats = RTCPStats()
@@ -51,6 +51,7 @@ class RTPTransport:
         self.timeout = timeout
         self.paused = False
         self._rtcp_loop = self._timeout_loop = None
+        self.num_streams = num_streams
 
     def subscribe(self, client: RTPTransportClient):
         """
@@ -198,14 +199,14 @@ class RTPTransport:
     def __exit__(self, exc_type, exc_val, exc_tb):
         raise RuntimeError('should never be called')
 
-    def on_transport_request(self, headers: dict):
+    def on_transport_request(self, headers: dict, stream_number=0):
         """
         Given a setup request headers dict,
         add whatever headers are necessary, usually the 'Transport' header.
         """
         raise NotImplementedError
 
-    def on_transport_response(self, headers: dict):
+    def on_transport_response(self, headers: dict, stream_number=0):
         """
         Given a setup response headers dict,
         Allow the transport to read whatever is necessary.
@@ -241,7 +242,7 @@ class RTPTransport:
         """
         raise NotImplementedError
 
-    async def send_rtcp_report(self, rtcp: RTCP):
+    async def send_rtcp_report(self, rtcp: RTCP, stream_number=0):
         """
         Send an RTCP report back to the server
         """

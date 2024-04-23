@@ -15,8 +15,9 @@ async def test_reader():
     server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
     try:
         async with RTSPReader('rtspt://127.0.0.1:5554/media.sdp', timeout=2) as reader:
-            async for pkt in reader.iter_packets():
+            async for media_type, pkt in reader.iter_packets():
                 assert isinstance(pkt, RTP)
+                assert media_type == 'video'
                 count += 1
 
                 if count >= 2:
@@ -34,10 +35,11 @@ async def test_reader_reconnect():
 
     server = await asyncio.start_server(handle_client_auth, '127.0.0.1', 5554)
     try:
-        async with RTSPReader('rtspt://127.0.0.1:5554/media.sdp', run_loop=True, timeout=2, log_level=10) as reader:
-            async for pkt in reader.iter_packets():
+        async with RTSPReader('rtspt://127.0.0.1:5554/media.sdp', run_loop=True, timeout=2, media_types=['video'], log_level=10) as reader:
+            async for media_type, pkt in reader.iter_packets():
                 print('PKT', len(pkt))
                 assert isinstance(pkt, RTP)
+                assert media_type == 'video'
                 count += 1
 
                 if count == 2:

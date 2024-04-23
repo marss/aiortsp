@@ -37,11 +37,11 @@ class RTSPMediaSession:
     TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, transport: RTPTransport, media_type='video', logger=None):
+    def __init__(self, connection, media_url, transport: RTPTransport, media_types=['video'], logger=None):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
         self.transport = transport
-        self.media_type = media_type
+        self.media_types = media_types
         self.logger = logger or default_logger
 
         self.is_setup = False
@@ -86,18 +86,20 @@ class RTSPMediaSession:
         self.sdp = SDP(resp.content)
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
-        setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
-        self.logger.info('setting up using URL: %s', setup_url)
+        for index, media_type in enumerate(self.media_types):
+            setup_url = self.sdp.setup_url(self.media_url, media_type=media_type)
+            self.logger.info('setting up using URL: %s', setup_url)
 
-        # --- SETUP <url> RTSP/1.0 ---
-        headers = {}
-        self.transport.on_transport_request(headers)
-        resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
-        self.transport.on_transport_response(resp.headers)
-        self.logger.info('stream correctly setup: %s', resp)
+            # --- SETUP <url> RTSP/1.0 ---
+            headers = {}
+            self.transport.on_transport_request(headers, index)
+            resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
+            self.transport.on_transport_response(resp.headers, index)
+            self.logger.info('stream correctly setup: %s', resp)
 
-        # Store session ID
-        self.save_session(resp)
+            # Store session ID
+            if self.session_id is None:
+                self.save_session(resp)
 
         # Warm up transport
         await self.transport.warmup()

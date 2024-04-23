@@ -1,13 +1,14 @@
 """
-Simplified RTP reader
+Simplified RTP Media reader
 """
 import asyncio
 import logging
 from time import time
-from typing import AsyncIterable, Optional
+from typing import AsyncIterable, Optional, Tuple
 from urllib.parse import urlparse
 
 from dpkt.rtp import RTP
+from aiortsp.rtcp.parser import RTCP
 
 from aiortsp.rtsp.connection import RTSPConnection
 from aiortsp.rtsp.session import RTSPMediaSession, sanitize_rtsp_url
@@ -28,10 +29,11 @@ class RTSPReader(RTPTransportClient):
     """
 
     def __init__(
-            self, media_url: str, timeout=10, log_level=20,
+            self, media_url: str, media_types=['video'], timeout=10, log_level=20,
             run_loop=False, **_
     ):
         self.media_url = media_url
+        self.media_types = media_types
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
         self.timeout = timeout
@@ -41,19 +43,33 @@ class RTSPReader(RTPTransportClient):
         self.connection: Optional[RTSPConnection] = None
         self.transport: Optional[RTPTransport] = None
         self.session: Optional[RTSPMediaSession] = None
-        self.payload_type = None
+        self.payload_types = []
+        self.rtp_count = 0
+        self.rtcp_count = 0
+
 
     def handle_rtp(self, rtp: RTP):
         """Queue packets for the iterator"""
-        if self.payload_type and self.payload_type != rtp.pt:
-            return
+        self.rtp_count += 1
+        self.logger.info(f'rtp self.payload_types:{self.payload_types} incoming_type:{rtp.pt}')
 
-        self.queue.put_nowait(rtp)
+        for pt, media_type in self.payload_types:
+            if pt == rtp.pt:
+                self.logger.debug(f'adding {media_type} {rtp.pt} to queue')
+                self.queue.put_nowait((media_type, rtp))
+                break
+
+    def handle_rtcp(self, rtcp: RTCP):
+        self.rtcp_count += 1
+        self.logger.debug(f'RTCP[{self.rtp_count}]: {rtcp}')
 
     def on_ready(self, connection: RTSPConnection, transport: RTPTransport, session: RTSPMediaSession):
         """Handler on ready to play stream, for sub classes to do their initialisation"""
         if session.sdp:
-            self.payload_type = session.sdp.media_payload_type()
+            for media_type in self.media_types:
+                self.logger.debug(f'setting session media to {media_type}')
+                pt = session.sdp.media_payload_type(media_type)
+                self.payload_types.extend([(pt, media_type)])
         transport.subscribe(self)
         self.connection = connection
         self.transport = transport
@@ -93,8 +109,8 @@ class RTSPReader(RTPTransportClient):
             self.logger.info('connected!')
 
             transport_class = transport_for_scheme(p_url.scheme)
-            async with transport_class(conn, logger=self.logger, timeout=self.timeout) as transport:
-                async with RTSPMediaSession(conn, self.media_url, transport=transport, logger=self.logger) as sess:
+            async with transport_class(conn, logger=self.logger, timeout=self.timeout, num_streams=len(self.media_types)) as transport:
+                async with RTSPMediaSession(conn, self.media_url, media_types=self.media_types, transport=transport, logger=self.logger) as sess:
 
                     self.on_ready(conn, transport, sess)
 
@@ -126,15 +142,15 @@ class RTSPReader(RTPTransportClient):
         if self._runner:
             self._runner.cancel()
 
-    async def iter_packets(self) -> AsyncIterable[RTP]:
+    async def iter_packets(self) -> AsyncIterable[Tuple[str, RTP]]:
         """
         Yield RTP packets as they come.
         User can then do whatever they want, without too much boiler plate.
         """
         while True:
-            pkt = await self.queue.get()
+            item = await self.queue.get()
 
-            if not pkt:
+            if not item:
                 break
 
-            yield pkt
+            yield item
