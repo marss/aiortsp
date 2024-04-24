@@ -162,7 +162,7 @@ class UDPTransport(RTPTransport):
             loop = asyncio.get_event_loop()
 
             # Try to create RTP endpoint
-            for index in range(len(self.rtp_sinks)):
+            for index in range(self.num_streams):
                 rtp_sock, rtcp_sock = await asyncio.wait_for(
                     loop.run_in_executor(None, self.get_socket_pair), 10)
 
@@ -234,7 +234,7 @@ class UDPTransport(RTPTransport):
         Perform cleanup, which by default is closing both sinks.
         """
         super().close(error)
-        for i in range(len(self.rtp_sinks)):
+        for i in range(self.num_streams):
             self.rtp_sinks[i].close()
             self.rtcp_sink[i].close()
 
@@ -260,12 +260,12 @@ class UDPTransport(RTPTransport):
         await super().warmup()
 
         if self.server_rtp is not None:
-            for i in range(len(self.rtp_sinks)):
+            for i in range(self.num_streams):
                 self.logger.info('sending warmup RTP uplink traffic')
                 self.send_upstream(self.rtp_sinks[i], self.connection.host, self.server_rtp[i])
 
         if self.server_rtcp is not None:
-            for i in range(len(self.rtp_sinks)):
+            for i in range(self.num_streams):
                 self.logger.info('sending warmup RTCP uplink traffic')
                 self.send_upstream(self.rtcp_sinks[i], self.connection.host, self.server_rtcp[i])
 

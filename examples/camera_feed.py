@@ -3,7 +3,7 @@ import logging
 
 from aiortsp.rtsp.reader import RTSPReader
 
-URL = f'rtsp://admin:bpa2017@192.168.0.82:554/1/1'
+URL = f'rtspt://admin:bpa2017@192.168.0.82:554/1/1'
 MEDIA_TYPES=['video', 'audio']
 VIDEO_FILE = 'cam_video.h264'
 AUDIO_FILE = 'cam_audio.pcm'
@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger('RTSPLogger')
 logger.propagate = True
 
-def h264_decode(pkt, video_file):
+def h264_decode(data, video_file):
     '''
     5.3.  NAL Unit Header Usage
 
@@ -30,7 +30,7 @@ def h264_decode(pkt, video_file):
     NAL_TYPE_MASK = 0x1F
     FU_START_BIT_MASK = 0x80
     NAL_START= b'\x00\x00\x00\x01'
-    nal_type = (pkt.data[0] & NAL_TYPE_MASK)
+    nal_type = (data[0] & NAL_TYPE_MASK)
     '''
     https://datatracker.ietf.org/doc/html/rfc6184#section-5.3
 
@@ -51,7 +51,7 @@ def h264_decode(pkt, video_file):
     if nal_type in range(1, 24):
         logger.debug("single NAL unit packet")
         video_file.write(NAL_START)
-        video_file.write(pkt.data)
+        video_file.write(data)
     # FU-A
     elif nal_type == 28:
         logger.debug("FU-A packet")
@@ -91,21 +91,21 @@ def h264_decode(pkt, video_file):
               fragment NAL units to FU-Bs without organizing the incoming NAL
               units to the NAL unit decoding order.
         '''
-        if (pkt.data[1] & FU_START_BIT_MASK):
+        if (data[1] & FU_START_BIT_MASK):
             logger.debug("FU-A packet start!")
             video_file.write(NAL_START)
-            video_file.write(bytes([(pkt.data[0] & FNRI_MASK) | (pkt.data[1] & NAL_TYPE_MASK)]))
-        video_file.write(pkt.data[2:])
+            video_file.write(bytes([(data[0] & FNRI_MASK) | (data[1] & NAL_TYPE_MASK)]))
+        video_file.write(data[2:])
     # STAP-A, STAP-B
     elif nal_type in [24, 25]:
         logger.debug("STRAP A/B packet")
         # https://datatracker.ietf.org/doc/html/rfc6184#section-5.7.1
         offset = 1
-        while offset < len(pkt.data):
-            nal_size = int.from_bytes(pkt.data[offset:offset+2], 'big')
+        while offset < len(data):
+            nal_size = int.from_bytes(data[offset:offset+2], 'big')
             offset += 2
             video_file.write(NAL_START)
-            video_file.write(pkt.data[offset:offset+nal_size])
+            video_file.write(data[offset:offset+nal_size])
             offset += nal_size
     elif nal_type in [26, 27]:  # MTAP16, MTAP24
         logger.debug("MTAP16 MTAP24 packet (ignored)")
@@ -123,7 +123,7 @@ async def main():
                 async for media_type, pkt in reader.iter_packets():
                     print(f'{media_type} {pkt.pt}')
                     if media_type == 'video':
-                        h264_decode(pkt, video_file)
+                        h264_decode(pkt.data, video_file)
                     elif media_type == 'audio':
                         audio_file.write(pkt.data)
                     else:

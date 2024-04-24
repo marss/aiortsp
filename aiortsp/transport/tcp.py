@@ -68,7 +68,7 @@ class TCPTransport(RTPTransport):
         self.handle_rtp_data(binary.data)
 
     def on_transport_request(self, headers: dict, stream_number=0):
-        if stream_number not in range(len(self.rtp_idx)):
+        if stream_number not in range(self.num_streams):
             raise ValueError(f"Invalid stream number {stream_number}")
         rtp_idx = self.rtp_idx[stream_number]
         rtcp_idx = self.rtcp_idx[stream_number]
@@ -91,7 +91,7 @@ class TCPTransport(RTPTransport):
         """
         Send an RTCP report back to the server for a specific stream.
         """
-        if stream_number not in range(len(self.rtp_idx)):
+        if stream_number not in range(self.num_streams):
             raise ValueError(f"Invalid stream number {stream_number}")
 
         rtcp_channel = self.rtcp_idx[stream_index]
