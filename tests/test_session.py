@@ -70,9 +70,14 @@ async def handle_client_auth(client_reader, client_writer):
             client_writer.write(response.encode())
 
             if playing:
-                # Send 2 RTP packets
+                # Send 2 Video RTP packets (notice the packet type 96 0x60)
                 rtp = bytearray.fromhex('2400002080605eaac639ab5e13cd9b86674d0029e29019077f1180b7010101a41e244540'
                                         '2400001080605eabc639ab5e13cd9b8668ee3c80')
+                client_writer.write(rtp)
+
+                # Send 2 Audio RTP packets (notice the packet type 8 0x08)
+                rtp = bytearray.fromhex('2400002080085eaac639ab5e13cd9b86674d0029e29019077f1180b7010101a41e244540'
+                                        '2400001080085eabc639ab5e13cd9b8668ee3c80')
                 client_writer.write(rtp)
 
                 # Send an SR
@@ -95,6 +100,6 @@ async def test_session():
                     await asyncio.sleep(0.2)
                     rtcp = sess.stats.build_rtcp()
                     assert rtcp
-                    assert sess.stats.received == 2
+                    assert sess.stats.received == 4
     finally:
         server.close()
