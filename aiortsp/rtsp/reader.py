@@ -132,6 +132,15 @@ class RTSPReader(RTPTransportClient):
                         self.logger.info('stopping stream...')
                         raise
 
+    async def close(self):
+        """ Gracefully close the RTSP session and the connection. """
+        if self.session:
+            await self.session.teardown()
+        if self.connection:
+            self.connection.close()
+        if self._runner:
+            self._runner.cancel()
+
     async def __aenter__(self):
         self._runner = asyncio.ensure_future(
             self.run_stream_loop() if self.run_loop else self.run_stream())
@@ -139,8 +148,7 @@ class RTSPReader(RTPTransportClient):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self._runner:
-            self._runner.cancel()
+        await self.close()
 
     async def iter_packets(self) -> AsyncIterable[Tuple[str, RTP]]:
         """

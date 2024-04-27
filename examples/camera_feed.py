@@ -115,11 +115,11 @@ def h264_decode(data, video_file):
         # TODO
         pass
 
-
 async def main():
     async with RTSPReader(URL, media_types=MEDIA_TYPES, log_level=logging.DEBUG) as reader:
         with open(VIDEO_FILE, 'wb') as video_file:
             with open(AUDIO_FILE, 'wb') as audio_file:
+                count=0
                 async for media_type, pkt in reader.iter_packets():
                     print(f'{media_type} {pkt.pt}')
                     if media_type == 'video':
@@ -128,6 +128,9 @@ async def main():
                         audio_file.write(pkt.data)
                     else:
                         print(f'unsupported {media_type} {pkt.pt}')
+                    count += 1
+                    if count > 100:
+                        break
 
 
 asyncio.run(main())

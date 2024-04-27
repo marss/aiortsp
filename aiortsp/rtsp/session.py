@@ -85,19 +85,19 @@ class RTSPMediaSession:
         self.sdp = SDP(resp.content)
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
-        for index, media_type in enumerate(self.media_types):
+        for stream_number, media_type in enumerate(self.media_types):
             setup_url = self.sdp.setup_url(self.media_url, media_type=media_type)
             self.logger.info('setting up using URL: %s', setup_url)
 
             # --- SETUP <url> RTSP/1.0 ---
             headers = {}
-            self.transport.on_transport_request(headers, index)
+            self.transport.on_transport_request(headers, stream_number)
             resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
-            self.transport.on_transport_response(resp.headers, index)
+            self.transport.on_transport_response(resp.headers, stream_number)
             self.logger.info('stream correctly setup: %s', resp)
             # Store session ID
-            if self.session_id[index] is None:
-                self.save_session(resp, index)
+            if self.session_id[stream_number] is None:
+                self.save_session(resp, stream_number)
 
         # Warm up transport
         await self.transport.warmup()
@@ -148,11 +148,18 @@ class RTSPMediaSession:
         """
         Perform TEARDOWN
         """
-        if self.connection.running:
-            self.logger.info('stopping session/playback...')
-            resp = await self._send('TEARDOWN')
-            self.logger.debug('response to teardown: %s', resp)
-            return resp
+
+        # Some cameras allow multiple media with the same session id
+        # in this case, we only send a single teardown
+        # otherwise, send a teardown per session id
+        # this feels awkward, maybe we could rework media_types, session_id to be a dict ?
+        unique_sessions = list(set(self.session_id))
+        for id in unique_sessions:
+            if self.connection.running:
+                stream_number = unique_sessions.index(id)
+                self.logger.info(f'stopping session {self.session_id[stream_number]}')
+                resp = await self._send('TEARDOWN', stream_number=stream_number)
+                self.logger.debug('response to teardown: %s', resp)
 
         self.logger.info('session closed (no transport)')
 
