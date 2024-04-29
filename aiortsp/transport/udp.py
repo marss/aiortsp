@@ -270,5 +270,7 @@ class UDPTransport(RTPTransport):
                 self.send_upstream(self.rtcp_sinks[i], self.connection.host, self.server_rtcp[i])
 
     async def send_rtcp_report(self, rtcp: RTCP, stream_number=0):
+        if stream_number not in range(self.num_streams):
+            raise ValueError(f"Invalid stream number {stream_number}")
         if self.rtcp_sender:
             self.rtcp_sinks[stream_number].sendto(bytes(rtcp), self.rtcp_sender)

@@ -87,13 +87,15 @@ class TCPTransport(RTPTransport):
             raise RTSPError(f'Invalid returned interleaved header: expected {interleaved}, got {fields.get("interleaved")}')
 
 
-    def send_rtcp_report(self, rtcp: RTCP, stream_number=0):
+    async def send_rtcp_report(self, rtcp: RTCP, stream_number=0):
         """
         Send an RTCP report back to the server for a specific stream.
         """
+
         if stream_number not in range(self.num_streams):
             raise ValueError(f"Invalid stream number {stream_number}")
 
-        rtcp_channel = self.rtcp_idx[stream_index]
+        rtcp_channel = self.rtcp_idx[stream_number]
+        self.logger.debug(f'rtcp report {rtcp_channel}')
         self.connection.send_binary(rtcp_channel, bytes(rtcp))
 
