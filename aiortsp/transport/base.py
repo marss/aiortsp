@@ -25,10 +25,10 @@ class RTPTransportClient:
     - Implementing wanted callbacks
     """
 
-    def handle_rtp(self, rtp: RTP):
+    def handle_rtp(self, rtp: RTP, channel_number=0):
         """Handle an incoming RTP packet"""
 
-    def handle_rtcp(self, rtcp: RTCP):
+    def handle_rtcp(self, rtcp: RTCP, channel_number=0):
         """Handle an incoming RTP packet"""
 
     def handle_closed(self, error: Optional[Exception]):
@@ -43,7 +43,7 @@ class RTPTransport:
     def __init__(self, connection, *, logger=None, timeout=10, num_streams=1):
         self.connection = connection
         self.clients: Set[RTPTransportClient] = set()
-        self.stats = RTCPStats()
+        self.stats = [RTCPStats() for _ in range(num_streams)]
         self.logger = logger or _logger
         self.result = asyncio.Future()
         # Just to be sure we retrieve the exception at least once if client doesn't
@@ -65,14 +65,14 @@ class RTPTransport:
         """
         self.clients.remove(client)
 
-    def handle_rtcp_data(self, data: bytes):
+    def handle_rtcp_data(self, data: bytes, channel_number=0):
         """
         An RTCP report was received.
         """
         rtcp = RTCP.unpack(data)
-        self.logger.debug('received RTCP report: %s', rtcp)
+        self.logger.debug(f'received RTCP report: {rtcp} for {channel_number}')
 
-        self.stats.handle_rtcp(rtcp)
+        self.stats[channel_number].handle_rtcp(rtcp)
 
         if self._rtcp_loop is None:
             # This is the first packet ever!
@@ -80,21 +80,21 @@ class RTPTransport:
 
         for client in self.clients:
             try:
-                client.handle_rtcp(rtcp)
+                client.handle_rtcp(rtcp, channel_number)
             except Exception as ex:  # pylint: disable=broad-except
                 self.logger.error('error on RTCP client callback: %r', ex)
 
-    def handle_rtp_data(self, data: bytes):
+    def handle_rtp_data(self, data: bytes, channel_number=0):
         """
         An RTP packet was received.
         """
         rtp = RTP(data)
 
-        self.stats.update(rtp)
+        self.stats[channel_number].update(rtp)
 
         for client in self.clients:
             try:
-                client.handle_rtp(rtp)
+                client.handle_rtp(rtp, channel_number)
             except Exception as ex:  # pylint: disable=broad-except
                 self.logger.error('error on RTP client callback: %r', ex)
 
@@ -121,29 +121,31 @@ class RTPTransport:
         """
         initial = True
         while self.running:
-            delay = self.stats.rtcp_interval(initial)
-            initial = False
-            self.logger.debug('sleeping for RTCP delay: %s', delay)
-            await asyncio.sleep(delay)
+            for stats in self.stats:
+                self.logger.info(f'stats {stats.ssrc}')
+                delay = stats.rtcp_interval(initial)
+                initial = False
+                self.logger.debug('sleeping for RTCP delay: %s', delay)
+                await asyncio.sleep(delay)
 
-            try:
-                rtcp = self.stats.build_rtcp()
+                try:
+                    rtcp = stats.build_rtcp()
 
-                if not rtcp:
-                    self.logger.warning('no RTCP report available yet (are we receiving anything?)')
+                    if not rtcp:
+                        self.logger.warning('no RTCP report available yet (are we receiving anything?)')
+                        continue
+                except Exception as ex:  # pylint: disable=broad-except
+                    self.logger.error('unable to build RTCP report: %r', ex)
+                    traceback.print_exc()
                     continue
-            except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('unable to build RTCP report: %r', ex)
-                traceback.print_exc()
-                continue
 
-            try:
-                self.logger.debug('sending RTCP report: %s', rtcp)
-                await self.send_rtcp_report(rtcp)
-            except asyncio.CancelledError:
-                break
-            except Exception as ex:  # pylint: disable=broad-except
-                self.logger.error('unable to send RTCP report: %r', ex)
+                try:
+                    self.logger.debug('sending RTCP report: %s', rtcp)
+                    await self.send_rtcp_report(rtcp)
+                except asyncio.CancelledError:
+                    break
+                except Exception as ex:  # pylint: disable=broad-except
+                    self.logger.error('unable to send RTCP report: %r', ex)
 
     async def timeout_loop(self):
         """
@@ -152,14 +154,14 @@ class RTPTransport:
         sleep_duration = self.timeout
         while self.running:
             await asyncio.sleep(sleep_duration)
+            for stats in self.stats:
+                # Check if (and when) we received anything
+                diff = time() - stats.last_received
+                if not self.paused and diff > self.timeout:
+                    self.logger.error('no RTP received for %s seconds: closing', self.timeout)
+                    return self.close(TimeoutError('no data'))
 
-            # Check if (and when) we received anything
-            diff = time() - self.stats.last_received
-            if not self.paused and diff > self.timeout:
-                self.logger.error('no RTP received for %s seconds: closing', self.timeout)
-                return self.close(TimeoutError('no data'))
-
-            sleep_duration = max(self.timeout - diff, 1)
+                sleep_duration = max(self.timeout - diff, 1)
 
     def close(self, error=None):
         """

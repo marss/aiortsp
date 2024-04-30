@@ -207,8 +207,9 @@ class UDPTransport(RTPTransport):
         :param sender:
         """
         if self.rtcp_sender is None:
-            self.logger.info('received RTCP from %s', sender)
             self.rtcp_sender = sender
+
+        self.logger.info(f'received RTCP from {self.rtcp_sender}')
         self.handle_rtcp_data(data)
 
     def on_transport_request(self, headers: dict, stream_number=0):
@@ -236,7 +237,7 @@ class UDPTransport(RTPTransport):
         super().close(error)
         for i in range(self.num_streams):
             self.rtp_sinks[i].close()
-            self.rtcp_sink[i].close()
+            self.rtcp_sinks[i].close()
 
     @staticmethod
     def send_upstream(sink, address, port, count=5, length=200):

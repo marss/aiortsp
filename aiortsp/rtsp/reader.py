@@ -45,13 +45,13 @@ class RTSPReader(RTPTransportClient):
         self.session: Optional[RTSPMediaSession] = None
         self.payload_types = []
         self.rtp_count = 0
-        self.rtcp_count = 0
+        self.rtcp_count = [0] * len(media_types)
 
 
-    def handle_rtp(self, rtp: RTP):
+    def handle_rtp(self, rtp: RTP, channel_number=0):
         """Queue packets for the iterator"""
         self.rtp_count += 1
-        self.logger.debug(f'rtp self.payload_types:{self.payload_types} incoming_type:{rtp.pt}')
+        self.logger.debug(f'channel:{channel_number} rtp self.payload_types:{self.payload_types} incoming_type:{rtp.pt}')
 
         for pt, media_type in self.payload_types:
             if pt == rtp.pt:
@@ -59,9 +59,9 @@ class RTSPReader(RTPTransportClient):
                 self.queue.put_nowait((media_type, rtp))
                 break
 
-    def handle_rtcp(self, rtcp: RTCP):
-        self.rtcp_count += 1
-        self.logger.debug(f'RTCP[{self.rtp_count}]: {rtcp}')
+    def handle_rtcp(self, rtcp: RTCP, channel_number=0):
+        self.rtcp_count[channel_number] += 1
+        self.logger.debug(f'RTCP: {self.rtcp_count} {rtcp}')
 
     def on_ready(self, connection: RTSPConnection, transport: RTPTransport, session: RTSPMediaSession):
         """Handler on ready to play stream, for sub classes to do their initialisation"""

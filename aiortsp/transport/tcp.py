@@ -59,13 +59,15 @@ class TCPTransport(RTPTransport):
         """
         Handle interleaved data registered as RTCP
         """
-        self.handle_rtcp_data(binary.data)
+        channel_number = binary.id//2
+        self.handle_rtcp_data(binary.data, channel_number)
 
     def handle_rtp_bin(self, binary: RTSPBinary):
         """
         Handle interleaved data registered as RTP
         """
-        self.handle_rtp_data(binary.data)
+        channel_number = binary.id//2
+        self.handle_rtp_data(binary.data, channel_number)
 
     def on_transport_request(self, headers: dict, stream_number=0):
         if stream_number not in range(self.num_streams):

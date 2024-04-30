@@ -103,9 +103,9 @@ class RTSPMediaSession:
         await self.transport.warmup()
 
     @property
-    def stats(self) -> RTCPStats:
+    def stats(self, stream_number=0) -> RTCPStats:
         """Stats convenient accessor"""
-        return self.transport.stats
+        return self.transport.stats[stream_number]
 
     def save_options(self, resp: RTSPResponse):
         """
