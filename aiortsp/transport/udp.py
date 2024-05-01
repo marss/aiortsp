@@ -96,7 +96,7 @@ class RTPSink(DatagramSink):
     RTP sink
     """
     def datagram_received(self, data, addr):
-        self.receiver.handle_rtp_data(data)
+        self.receiver.handle_rtp(data, addr)
 
 
 class UDPTransport(RTPTransport):
@@ -116,7 +116,7 @@ class UDPTransport(RTPTransport):
         self.rtcp_sinks = [None] * self.num_streams
         self.server_rtp = [None] * self.num_streams
         self.server_rtcp = [None] * self.num_streams
-        self.rtcp_sender = None
+        self.rtcp_sender = [None] * self.num_streams
 
     @classmethod
     def get_socket_pair(cls, bind_address=None, retry=10) -> Tuple[socket.socket, socket.socket]:
@@ -199,6 +199,18 @@ class UDPTransport(RTPTransport):
         """
         return all(sink.running for sink in self.rtp_sinks + self.rtcp_sinks if sink is not None)
 
+    def handle_rtp(self, data, sender):
+        """
+        Special case for RTP: we may not have received any report yet
+        :param data:
+        :param sender:
+        """
+        rtp_src = sender[1]
+        stream_number = self.server_rtp.index(rtp_src)
+        rtp_sink = self.rtp_sinks[stream_number]
+
+        self.logger.info(f'received RTCP from stream {stream_number}: {rtp_src}=>{rtp_sink}')
+        self.handle_rtp_data(data,stream_number)
 
     def handle_rtcp(self, data, sender):
         """
@@ -206,11 +218,16 @@ class UDPTransport(RTPTransport):
         :param data:
         :param sender:
         """
-        if self.rtcp_sender is None:
-            self.rtcp_sender = sender
+        rtcp_src = sender[1]
+        stream_number = self.server_rtcp.index(rtcp_src)
+        rtcp_sink = self.rtcp_sinks[stream_number]
 
-        self.logger.info(f'received RTCP from {self.rtcp_sender}')
-        self.handle_rtcp_data(data)
+        if self.rtcp_sender[stream_number] is None:
+            self.rtcp_sender[stream_number] = sender
+
+        self.logger.info(f'received RTCP from stream {stream_number}: {rtcp_src}=>{rtcp_sink}')
+
+        self.handle_rtcp_data(data,stream_number)
 
     def on_transport_request(self, headers: dict, stream_number=0):
         rtp_port = self.rtp_sinks[stream_number].local_port
@@ -262,16 +279,16 @@ class UDPTransport(RTPTransport):
 
         if self.server_rtp is not None:
             for i in range(self.num_streams):
-                self.logger.info('sending warmup RTP uplink traffic')
+                self.logger.info(f'sending warmup RTP uplink traffic stream {i} local:{self.rtp_sinks[i].local_port}<=>server:{self.server_rtp[i]}')
                 self.send_upstream(self.rtp_sinks[i], self.connection.host, self.server_rtp[i])
 
         if self.server_rtcp is not None:
             for i in range(self.num_streams):
-                self.logger.info('sending warmup RTCP uplink traffic')
+                self.logger.info(f'sending warmup RTCP uplink traffic stream {i} local:{self.rtcp_sinks[i].local_port}<=>server{self.server_rtcp[i]}')
                 self.send_upstream(self.rtcp_sinks[i], self.connection.host, self.server_rtcp[i])
 
     async def send_rtcp_report(self, rtcp: RTCP, stream_number=0):
         if stream_number not in range(self.num_streams):
             raise ValueError(f"Invalid stream number {stream_number}")
         if self.rtcp_sender:
-            self.rtcp_sinks[stream_number].sendto(bytes(rtcp), self.rtcp_sender)
+            self.rtcp_sinks[stream_number].sendto(bytes(rtcp), self.rtcp_sender[stream_number])
