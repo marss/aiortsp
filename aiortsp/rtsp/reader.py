@@ -44,13 +44,13 @@ class RTSPReader(RTPTransportClient):
         self.transport: Optional[RTPTransport] = None
         self.session: Optional[RTSPMediaSession] = None
         self.payload_types = []
-        self.rtp_count = 0
+        self.rtp_count = [0] * len(media_types)
         self.rtcp_count = [0] * len(media_types)
 
 
     def handle_rtp(self, rtp: RTP, channel_number=0):
         """Queue packets for the iterator"""
-        self.rtp_count += 1
+        self.rtp_count[channel_number] += 1
         self.logger.debug(f'channel:{channel_number} rtp self.payload_types:{self.payload_types} incoming_type:{rtp.pt}')
 
         for pt, media_type in self.payload_types:
