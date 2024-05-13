@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 logger = logging.getLogger('RTSPLogger')
 logger.propagate = True
 
-def h264_decode(data, video_file):
+def nal_decode(data, video_file):
     '''
     5.3.  NAL Unit Header Usage
 
@@ -123,7 +123,7 @@ async def main():
                 async for media_type, pkt in reader.iter_packets():
                     print(f'{media_type} {pkt.pt}')
                     if media_type == 'video':
-                        h264_decode(pkt.data, video_file)
+                        nal_decode(pkt.data, video_file)
                     elif media_type == 'audio':
                         audio_file.write(pkt.data)
                     else:
