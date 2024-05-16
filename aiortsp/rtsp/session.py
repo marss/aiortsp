@@ -34,14 +34,13 @@ def sanitize_rtsp_url(url: str) -> str:
 class RTSPMediaSession:
     """
     RTSP Media Session
-    TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, transport: RTPTransport, media_type='video', logger=None):
+    def __init__(self, connection, media_url, transport: RTPTransport, media_types=['video'], logger=None):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
         self.transport = transport
-        self.media_type = media_type
+        self.media_types = media_types
         self.logger = logger or default_logger
 
         self.is_setup = False
@@ -49,7 +48,7 @@ class RTSPMediaSession:
         self.server_rtp = None
         self.server_rtcp = None
 
-        self.session_id = None
+        self.session_id = [None] * len(media_types)
         self.session_keepalive = 60
         self.session_options: Set[str] = set()
 
@@ -86,26 +85,27 @@ class RTSPMediaSession:
         self.sdp = SDP(resp.content)
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
-        setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
-        self.logger.info('setting up using URL: %s', setup_url)
+        for stream_number, media_type in enumerate(self.media_types):
+            setup_url = self.sdp.setup_url(self.media_url, media_type=media_type)
+            self.logger.info('setting up using URL: %s', setup_url)
 
-        # --- SETUP <url> RTSP/1.0 ---
-        headers = {}
-        self.transport.on_transport_request(headers)
-        resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
-        self.transport.on_transport_response(resp.headers)
-        self.logger.info('stream correctly setup: %s', resp)
-
-        # Store session ID
-        self.save_session(resp)
+            # --- SETUP <url> RTSP/1.0 ---
+            headers = {}
+            self.transport.on_transport_request(headers, stream_number)
+            resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
+            self.transport.on_transport_response(resp.headers, stream_number)
+            self.logger.info('stream correctly setup: %s', resp)
+            # Store session ID
+            if self.session_id[stream_number] is None:
+                self.save_session(resp, stream_number)
 
         # Warm up transport
         await self.transport.warmup()
 
     @property
-    def stats(self) -> RTCPStats:
+    def stats(self, stream_number=0) -> RTCPStats:
         """Stats convenient accessor"""
-        return self.transport.stats
+        return self.transport.stats[stream_number]
 
     def save_options(self, resp: RTSPResponse):
         """
@@ -118,17 +118,16 @@ class RTSPMediaSession:
         self.session_options = {o.strip().upper() for o in resp.headers['public'].split(',')}
         self.logger.info('session options: %s', self.session_options)
 
-    def save_session(self, resp: RTSPResponse):
+    def save_session(self, resp: RTSPResponse, stream_number=0):
         """
         Extract session ID and timeout
         """
         # Extract session Id
         if 'session' not in resp.headers:
             raise RTSPError('error on SETUP: session not found')
-
         # Get session id
         session_params = resp.headers['session'].split(';')
-        self.session_id = session_params[0].strip()
+        self.session_id[stream_number] = session_params[0].strip()
         timeout = 60
         if len(session_params) > 1:
             for option in session_params[1:]:
@@ -142,26 +141,33 @@ class RTSPMediaSession:
         self.session_keepalive = int(timeout * 0.9)
         self.logger.info(
             'session id: %s, timeout: %s, keep_alive: %s',
-            self.session_id, timeout, self.session_keepalive
+            self.session_id[stream_number], timeout, self.session_keepalive
         )
 
     async def teardown(self):
         """
         Perform TEARDOWN
         """
-        if self.connection.running:
-            self.logger.info('stopping session/playback...')
-            resp = await self._send('TEARDOWN')
-            self.logger.debug('response to teardown: %s', resp)
-            return resp
+
+        # Some cameras allow multiple media with the same session id
+        # in this case, we only send a single teardown
+        # otherwise, send a teardown per session id
+        # this feels awkward, maybe we could rework media_types, session_id to be a dict ?
+        unique_sessions = list(set(self.session_id))
+        for id in unique_sessions:
+            if self.connection.running:
+                stream_number = unique_sessions.index(id)
+                self.logger.info(f'stopping session {self.session_id[stream_number]}')
+                resp = await self._send('TEARDOWN', stream_number=stream_number)
+                self.logger.debug('response to teardown: %s', resp)
 
         self.logger.info('session closed (no transport)')
 
-    async def _send(self, method, url=None, headers=None):
+    async def _send(self, method, url=None, headers=None, stream_number=0):
         if headers is None:
             headers = {}
-        if self.session_id:
-            headers['Session'] = self.session_id
+        if self.session_id[stream_number]:
+            headers['Session'] = self.session_id[stream_number]
         return await self.connection.send_request(method, url or self.media_url, headers)
 
     @staticmethod
@@ -219,13 +225,13 @@ class RTSPMediaSession:
             'start playing %s at time `%s` and speed `%s`...',
             self.media_url, start, speed
         )
-
-        resp = await self._send('PLAY', headers={
-            'Scale': speed,
-            'Range': range_
-        })
-        self.logger.debug('response to play: %s', resp)
-        return resp
+        for stream_number in range(len(self.session_id)):
+            resp = await self._send('PLAY', headers={
+                'Scale': speed,
+                'Range': range_
+            }, stream_number=stream_number)
+            self.logger.debug('response to play: %s', resp)
+        #return resp
 
     async def pause(self):
         """

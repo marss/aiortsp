@@ -28,7 +28,7 @@ async def handle_client_auth(client_reader, client_writer):
                 response += 'Content-Type: application/sdp\r\n'
                 response += 'Content-Base: rtsp://cam/media.sdp/\r\n'
                 response += 'Server: Dummy Test server\r\n'
-                response += 'Content-Length: 617\r\n'
+                response += 'Content-Length: 868\r\n'
                 response += '\r\n'
                 response += 'v=0\r\n'
                 response += 'o=- 17428449743163035608 1 IN IP4 10.10.0.77\r\n'
@@ -49,6 +49,17 @@ async def handle_client_auth(client_reader, client_writer):
                 response += 'a=control:rtsp://10.10.0.77/axis-media/media.amp/stream=0\r\n'
                 response += 'a=framerate:25.000000\r\n'
                 response += 'a=transform:1.000000,0.000000,0.000000;0.000000,1.000000,0.000000;0.000000,0.000000,1.000000\r\n'
+                response += 'a=control:trackID=0\r\n'
+                response += 'm=audio 0 RTP/AVP 8\r\n'
+                response += 'a=rtpmap:8 PCMA/8000\r\n'
+                response += 'a=fmtp:8 octet-align=1;decode_buf=400\r\n'
+                response += 'a=control:trackID=1\r\n'
+                response += 'a=recvonly\r\n'
+                response += 'm=audio 0 RTP/AVP 8\r\n'
+                response += 'a=rtpmap:8 PCMA/8000\r\n'
+                response += 'a=fmtp:8 octet-align=1;decode_buf=400\r\n'
+                response += 'a=control:trackID=2\r\n'
+                response += 'a=sendonly\r\n'
             elif msg.method == 'SETUP':
                 response += 'Transport: RTP/AVP/TCP;unicast;interleaved=0-1;ssrc=E6EC9FEF;mode="PLAY"\r\n'
                 response += 'Session: 2sY7Pd2EPx8JY50-;timeout=60\r\n'
@@ -59,9 +70,14 @@ async def handle_client_auth(client_reader, client_writer):
             client_writer.write(response.encode())
 
             if playing:
-                # Send 2 RTP packets
+                # Send 2 Video RTP packets (notice the packet type 96 0x60)
                 rtp = bytearray.fromhex('2400002080605eaac639ab5e13cd9b86674d0029e29019077f1180b7010101a41e244540'
                                         '2400001080605eabc639ab5e13cd9b8668ee3c80')
+                client_writer.write(rtp)
+
+                # Send 2 Audio RTP packets (notice the packet type 8 0x08)
+                rtp = bytearray.fromhex('2400002080085eaac639ab5e13cd9b86674d0029e29019077f1180b7010101a41e244540'
+                                        '2400001080085eabc639ab5e13cd9b8668ee3c80')
                 client_writer.write(rtp)
 
                 # Send an SR
@@ -84,6 +100,6 @@ async def test_session():
                     await asyncio.sleep(0.2)
                     rtcp = sess.stats.build_rtcp()
                     assert rtcp
-                    assert sess.stats.received == 2
+                    assert sess.stats.received == 4
     finally:
         server.close()
