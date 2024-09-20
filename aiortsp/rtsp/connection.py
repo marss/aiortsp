@@ -34,7 +34,7 @@ class RTSPConnection(asyncio.Protocol):
 
     """
 
-    def __init__(self, host, port, username=None, password=None, accept_auth=None, logger=None, timeout=10):
+    def __init__(self, host, port, username=None, password=None, accept_auth=None, logger=None, ssl=None, timeout=10):
         self.host = host
         self.port = port
         self.username = username
@@ -42,6 +42,7 @@ class RTSPConnection(asyncio.Protocol):
         self.accept_auth = [auth.lower() for auth in accept_auth] if accept_auth else ['basic', 'digest']
         self.default_timeout = timeout
         self.logger = logger or _logger
+        self.ssl = ssl
 
         self._transport = None
         self.result = asyncio.Future()
@@ -67,7 +68,7 @@ class RTSPConnection(asyncio.Protocol):
         loop = asyncio.get_event_loop()
         try:
             await asyncio.wait_for(
-                loop.create_connection(lambda: self, self.host, self.port),
+                loop.create_connection(lambda: self, self.host, self.port, ssl = self.ssl),
                 self.default_timeout
             )
         except (asyncio.TimeoutError, OSError) as to:

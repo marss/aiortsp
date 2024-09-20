@@ -20,7 +20,8 @@ def transport_for_scheme(scheme: str) -> Type[RTPTransport]:
     """Return transport type based on scheme"""
     transport_class = {
         'rtsp': UDPTransport,
-        'rtspt': TCPTransport
+        'rtspt': TCPTransport,
+        'rtsps': TCPTransport
     }.get(scheme)
 
     if not transport_class:

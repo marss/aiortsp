@@ -212,7 +212,7 @@ class SDP(dict):
         if not ctrl or ctrl == '*':
             return base
 
-        if ctrl.startswith('rtsp://'):
+        if ctrl.startswith('rtsp://') or ctrl.startswith('rtsps://'):
             return ctrl
 
         if not ctrl.startswith('/') and not base.endswith('/'):
