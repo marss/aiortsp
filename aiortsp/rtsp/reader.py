@@ -3,6 +3,7 @@ Simplified RTP reader
 """
 import asyncio
 import logging
+import ssl
 from time import time
 from typing import AsyncIterable, Optional
 from urllib.parse import urlparse
@@ -12,7 +13,6 @@ from dpkt.rtp import RTP
 from aiortsp.rtsp.connection import RTSPConnection
 from aiortsp.rtsp.session import RTSPMediaSession, sanitize_rtsp_url
 from aiortsp.transport import transport_for_scheme, RTPTransport, RTPTransportClient
-
 
 class RTSPReader(RTPTransportClient):
     """
@@ -29,6 +29,7 @@ class RTSPReader(RTPTransportClient):
 
     def __init__(
             self, media_url: str, timeout=10, log_level=20,
+            ssl = None,
             run_loop=False, **_
     ):
         self.media_url = media_url
@@ -36,6 +37,7 @@ class RTSPReader(RTPTransportClient):
         self.logger.setLevel(log_level)
         self.timeout = timeout
         self.run_loop = run_loop
+        self.ssl = ssl
         self.queue: 'asyncio.Queue[RTP]' = asyncio.Queue()
         self._runner = None
         self.connection: Optional[RTSPConnection] = None
@@ -85,10 +87,19 @@ class RTSPReader(RTPTransportClient):
         self.logger.info('try loading stream %s', sanitize_rtsp_url(self.media_url))
 
         p_url = urlparse(self.media_url)
+
+        if p_url.scheme == 'rtsps' and not self.ssl:
+            self.ssl = ssl.create_default_context()
+        if p_url.scheme == 'rtsps':
+            default_port = 322
+        else:
+            default_port = 554
+
         async with RTSPConnection(
-                p_url.hostname, p_url.port or 554,
+                p_url.hostname, p_url.port or default_port,
                 p_url.username, p_url.password,
-                logger=self.logger, timeout=self.timeout
+                logger=self.logger, timeout=self.timeout,
+                ssl=self.ssl
         ) as conn:
             self.logger.info('connected!')
 

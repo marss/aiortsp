@@ -25,8 +25,11 @@ def sanitize_rtsp_url(url: str) -> str:
     Sanitize an RTSP url, removing exotic scheme and authentication.
     """
     p_url = urlparse(url)
+    scheme = p_url.scheme
+    if scheme != 'rtsp' and scheme != 'rtsps':
+        scheme = 'rtsp'
     return p_url._replace(
-        scheme='rtsp',
+        scheme=scheme,
         netloc=f'{p_url.hostname}' if p_url.port is None else f'{p_url.hostname}:{p_url.port}'
     ).geturl()
 
