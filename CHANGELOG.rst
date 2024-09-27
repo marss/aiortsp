@@ -4,7 +4,15 @@ Versions history
 
 This repository follows changelog_.
 
-**Semantic versioning** will be followed as soon as stable enough, and will reach 1.0.0.
+We try to stick to **Semantic versioning**.
+
+
+[1.4.0] - 2024-09-27
+====================
+
+Added
+-----
+* Basic support for RTSPS (but no claim on RTSP/2.0) - Thanks Joshua Wise <joshua@joshuawise.com>
 
 [1.3.7] - 2023-09-01
 ====================
