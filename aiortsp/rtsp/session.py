@@ -1,14 +1,17 @@
 """
 RTSP Media Session setup and control
 """
+
+from __future__ import annotations
 import asyncio
 import calendar
+from dataclasses import dataclass
 import json
 import logging
 import math
 import re
 from datetime import datetime
-from typing import Set
+from typing import Optional, List, Literal, Set, Union
 from urllib.parse import urlparse
 
 from aiortsp.rtcp.stats import RTCPStats
@@ -34,17 +37,31 @@ def sanitize_rtsp_url(url: str) -> str:
     ).geturl()
 
 
+MediaType = Literal["video", "audio", "text", "application", "message"]
+
+
 class RTSPMediaSession:
     """
     RTSP Media Session
     TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, transport: RTPTransport, media_type='video', logger=None):
+    def __init__(
+            self,
+            connection,
+            media_url,
+            transport: Optional[RTPTransport] = None,
+            media_type: MediaType = "video",
+            logger=None,
+            media_stream_configurations: Optional[List[MediaStreamConfiguration]] = None
+        ):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
-        self.transport = transport
-        self.media_type = media_type
+        if media_stream_configurations is None:
+            if transport is None:
+                raise ValueError("transport or media_stream_configurations is required")
+            media_stream_configurations = [MediaStreamConfiguration(transport, media_type)]
+        self.media_stream_configurations = media_stream_configurations
         self.logger = logger or default_logger
 
         self.is_setup = False
@@ -89,26 +106,34 @@ class RTSPMediaSession:
         self.sdp = SDP(resp.content)
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
-        setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
-        self.logger.info('setting up using URL: %s', setup_url)
+        for media_stream_conf in self.media_stream_configurations:
+            setup_url = self.sdp.setup_url(
+                self.media_url,
+                media_type=media_stream_conf.media_type,
+                media_idx=media_stream_conf.media_idx
+            )
+            self.logger.info('setting up using URL: %s', setup_url)
 
-        # --- SETUP <url> RTSP/1.0 ---
-        headers = {}
-        self.transport.on_transport_request(headers)
-        resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
-        self.transport.on_transport_response(resp.headers)
-        self.logger.info('stream correctly setup: %s', resp)
+            # --- SETUP <url> RTSP/1.0 ---
+            headers = {}
+            media_stream_conf.transport.on_transport_request(headers)
+            resp = await self._send('SETUP', url=setup_url, headers=headers)
+            media_stream_conf.transport.on_transport_response(resp.headers)
+            self.logger.info('stream correctly setup: %s', resp)
 
-        # Store session ID
-        self.save_session(resp)
+            # Store session ID
+            if self.session_id is None:
+                self.save_session(resp)
 
-        # Warm up transport
-        await self.transport.warmup()
+            # Warm up transport
+            await media_stream_conf.transport.warmup()
 
     @property
-    def stats(self) -> RTCPStats:
+    def stats(self) -> Union[RTCPStats, List[RTCPStats]]:
         """Stats convenient accessor"""
-        return self.transport.stats
+        if len(self.media_stream_configurations) == 1:
+            return self.media_stream_configurations[0].transport.stats
+        return list(map(lambda msc: msc.transport.stats, self.media_stream_configurations))
 
     def save_options(self, resp: RTSPResponse):
         """
@@ -256,3 +281,12 @@ class RTSPMediaSession:
 
         self.logger.debug('response to keep_alive: %s', resp)
         return resp
+
+
+@dataclass
+class MediaStreamConfiguration:
+    """Stores settings for a single media stream in a RTSP media session."""
+
+    transport: RTPTransport
+    media_type: MediaType
+    media_idx: int = 0
