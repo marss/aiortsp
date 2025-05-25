@@ -35,10 +35,21 @@ async def main():
     parser.add_argument('-A', '--auth', type=str, help='Auth to force ')
     parser.add_argument('-p', '--props', default=None, help='Stream props (guessed if not provided)')
     parser.add_argument('-t', '--timeout', type=int, default=10, help='UDP timeout')
+    parser.add_argument('--media-types', type=str, default=None, help='Comma-separated list of media types to request (e.g., "video,audio").')
+    parser.add_argument('--all-streams', action='store_true', help='Request all available media streams from SDP.')
     parser.add_argument('url', help='RTSP url')
     args = parser.parse_args()
 
     logger.setLevel(args.logging)
+
+    media_types_to_request = None
+    use_all_streams_flag = False
+    if args.all_streams:
+        use_all_streams_flag = True
+    elif args.media_types:
+        media_types_to_request = [mt.strip() for mt in args.media_types.split(',')]
+    else:
+        use_all_streams_flag = True
 
     p_url = urlparse(args.url)
     media_url = args.url
@@ -59,10 +70,21 @@ async def main():
 
         async with transport_class(conn, logger=logger, timeout=args.timeout) as transport:
 
-            # This is where wa actually subscribe to data
-            transport.subscribe(probe)
+            async with RTSPMediaSession(
+                conn,
+                media_url,
+                transport,  # This is the template_transport
+                logger=logger,
+                media_types=media_types_to_request,
+                use_all_available_streams=use_all_streams_flag
+            ) as sess:
 
-            async with RTSPMediaSession(conn, media_url, transport, logger=logger) as sess:
+                if sess.transports:  # Check if any transports were successfully set up
+                    for media_type, actual_transport in sess.transports.items():
+                        logger.info(f"Subscribing RTP/RTCP probe to transport for media type: {media_type}")
+                        actual_transport.subscribe(probe)
+                else:
+                    logger.warning("No media streams were successfully set up by RTSPMediaSession.")
 
                 await sess.play()
 

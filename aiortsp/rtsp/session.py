@@ -37,15 +37,21 @@ def sanitize_rtsp_url(url: str) -> str:
 class RTSPMediaSession:
     """
     RTSP Media Session
-    TODO Refactor to support multiple medias
     """
 
-    def __init__(self, connection, media_url, transport: RTPTransport, media_type='video', logger=None):
+    def __init__(self, connection, media_url, transport_template: RTPTransport, media_type='video',
+                 use_all_available_streams=False, logger=None):
         self.connection = connection
         self.media_url = sanitize_rtsp_url(media_url)
-        self.transport = transport
-        self.media_type = media_type
+        self.transport_template = transport_template  # Store the template
+        self.transports = {}  # Initialize as a dictionary
         self.logger = logger or default_logger
+        self.use_all_available_streams = use_all_available_streams
+
+        if isinstance(media_type, str):
+            self.media_types = [media_type]
+        else:
+            self.media_types = media_type
 
         self.is_setup = False
         self.sdp = None
@@ -70,16 +76,14 @@ class RTSPMediaSession:
 
     async def setup(self):
         """
-        Perform SETUP
+        Perform SETUP for selected media streams.
         """
         # Get supported options
         resp = await self._send('OPTIONS', url=self.media_url)
         self.save_options(resp)
 
         # Get SDP
-        resp = await self._send('DESCRIBE', headers={
-            'Accept': 'application/sdp'
-        })
+        resp = await self._send('DESCRIBE', headers={'Accept': 'application/sdp'})
 
         if 'content-base' in resp.headers:
             self.media_url = resp.headers['content-base']
@@ -89,26 +93,79 @@ class RTSPMediaSession:
         self.sdp = SDP(resp.content)
         self.logger.debug('parsed SDP:\n%s', json.dumps(self.sdp, indent=2))
 
-        setup_url = self.sdp.setup_url(self.media_url, media_type=self.media_type)
-        self.logger.info('setting up using URL: %s', setup_url)
+        media_to_setup = []
+        if self.use_all_available_streams:
+            media_to_setup = self.sdp.get('medias', [])
+        else:
+            for idx, media_type in enumerate(self.media_types):
+                media_desc = self.sdp.get_media(media_type=media_type, media_idx=0) # Assuming one of each type for now
+                if media_desc:
+                    media_to_setup.append(media_desc)
+                else:
+                    self.logger.warning(f"Could not find media description for type: {media_type}")
 
-        # --- SETUP <url> RTSP/1.0 ---
-        headers = {}
-        self.transport.on_transport_request(headers)
-        resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
-        self.transport.on_transport_response(resp.headers)
-        self.logger.info('stream correctly setup: %s', resp)
+        if not media_to_setup:
+            self.logger.error("No media streams found or selected for setup.")
+            return
 
-        # Store session ID
-        self.save_session(resp)
+        setup_count = 0
+        for media_description in media_to_setup:
+            media_type = media_description['type']
+            # media_idx might be needed if multiple streams of the same type exist and are uniquely identified by index
+            # For now, using the media_description's own index if available, or default to 0
+            media_idx = media_description.get('idx', 0) # This 'idx' might not be standard in SDP media object
 
-        # Warm up transport
-        await self.transport.warmup()
+            # Correctly determine setup_url. The `setup_url` method in SDP class might need to handle this.
+            # Assuming `media_description` contains enough info or `setup_url` can find it.
+            # The `control` attribute from SDP media description is often the relative path.
+            control_attribute = media_description.get('control')
+            if not control_attribute:
+                self.logger.warning(f"No control attribute found for media type {media_type}, skipping setup.")
+                continue
+
+            if control_attribute.startswith('rtsp://') or control_attribute.startswith('rtsps://'):
+                setup_url = control_attribute
+            elif self.media_url.endswith('/') and control_attribute.startswith('/'): # Avoid double slashes
+                setup_url = self.media_url[:-1] + control_attribute
+            elif not self.media_url.endswith('/') and not control_attribute.startswith('/'):
+                 setup_url = self.media_url + '/' + control_attribute
+            else:
+                setup_url = self.media_url + control_attribute
+
+
+            self.logger.info(f'Setting up {media_type} using URL: {setup_url}')
+
+            # Instantiate a new RTPTransport for this stream
+            # Assuming transport_template is the class of the transport or a factory
+            new_transport = type(self.transport_template)() # Create new instance
+
+            headers = {}
+            new_transport.on_transport_request(headers)
+            try:
+                resp = await self.connection.send_request('SETUP', url=setup_url, headers=headers)
+                new_transport.on_transport_response(resp.headers)
+                self.logger.info(f'{media_type} stream correctly setup: {resp}')
+
+                self.transports[media_type] = new_transport
+                self.save_session(resp)  # Assume single session ID, updated by the latest SETUP
+                await new_transport.warmup()
+                setup_count += 1
+            except RTSPError as e:
+                self.logger.error(f"Failed to setup {media_type} stream: {e}")
+            except Exception as e: # pylint: disable=broad-except
+                self.logger.error(f"An unexpected error occurred during {media_type} setup: {e}")
+
+
+        if setup_count > 0:
+            self.is_setup = True
+        else:
+            self.logger.error("Failed to set up any media stream.")
+
 
     @property
-    def stats(self) -> RTCPStats:
+    def stats(self) -> dict: # Changed to dict
         """Stats convenient accessor"""
-        return self.transport.stats
+        return {media_type: transport.stats for media_type, transport in self.transports.items()}
 
     def save_options(self, resp: RTSPResponse):
         """
@@ -152,13 +209,31 @@ class RTSPMediaSession:
         """
         Perform TEARDOWN
         """
-        if self.connection.running:
+        if self.connection.running and self.transports: # Check if there's anything to tear down
             self.logger.info('stopping session/playback...')
+            # Assuming a single TEARDOWN for the whole session
             resp = await self._send('TEARDOWN')
             self.logger.debug('response to teardown: %s', resp)
+
+            for transport in self.transports.values():
+                if hasattr(transport, 'close') and asyncio.iscoroutinefunction(transport.close):
+                    await transport.close()
+                elif hasattr(transport, 'close'):
+                    transport.close()
+            self.transports.clear()
+            self.is_setup = False
             return resp
 
-        self.logger.info('session closed (no transport)')
+        self.logger.info('session closed or no transports to teardown.')
+        # Ensure transports are cleared even if connection wasn't running
+        for transport in self.transports.values():
+            if hasattr(transport, 'close') and asyncio.iscoroutinefunction(transport.close):
+                await transport.close()
+            elif hasattr(transport, 'close'):
+                transport.close()
+        self.transports.clear()
+        self.is_setup = False
+
 
     async def _send(self, method, url=None, headers=None):
         if headers is None:
