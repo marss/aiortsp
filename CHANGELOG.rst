@@ -7,6 +7,15 @@ This repository follows changelog_.
 We try to stick to **Semantic versioning**.
 
 
+[1.4.1] - 2025-09-22
+====================
+
+Added
+-----
+* Add audio support to the library (as separate media, not multiplexed).
+* Add an example to show how to receive audio.
+
+
 [1.4.0] - 2024-09-27
 ====================
 

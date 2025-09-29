@@ -29,8 +29,9 @@ class RTSPReader(RTPTransportClient):
 
     def __init__(
             self, media_url: str, timeout=10, log_level=20,
-            ssl = None,
-            run_loop=False, **_
+            ssl=None,
+            run_loop=False,
+            media_type="video", **_
     ):
         self.media_url = media_url
         self.logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class RTSPReader(RTPTransportClient):
         self.timeout = timeout
         self.run_loop = run_loop
         self.ssl = ssl
+        self._media_type = media_type
         self.queue: 'asyncio.Queue[RTP]' = asyncio.Queue()
         self._runner = None
         self.connection: Optional[RTSPConnection] = None
@@ -50,12 +52,13 @@ class RTSPReader(RTPTransportClient):
         if self.payload_type and self.payload_type != rtp.pt:
             return
 
+        rtp.media_type = self._media_type
         self.queue.put_nowait(rtp)
 
     def on_ready(self, connection: RTSPConnection, transport: RTPTransport, session: RTSPMediaSession):
         """Handler on ready to play stream, for sub classes to do their initialisation"""
         if session.sdp:
-            self.payload_type = session.sdp.media_payload_type()
+            self.payload_type = session.sdp.media_payload_type(self._media_type)
         transport.subscribe(self)
         self.connection = connection
         self.transport = transport
@@ -105,7 +108,7 @@ class RTSPReader(RTPTransportClient):
 
             transport_class = transport_for_scheme(p_url.scheme)
             async with transport_class(conn, logger=self.logger, timeout=self.timeout) as transport:
-                async with RTSPMediaSession(conn, self.media_url, transport=transport, logger=self.logger) as sess:
+                async with RTSPMediaSession(conn, self.media_url, transport=transport, media_type=self._media_type, logger=self.logger) as sess:
 
                     self.on_ready(conn, transport, sess)
 
